@@ -8,7 +8,7 @@
 #define MyAppURL "https://github.com/RSS-Reborn/RSS-Reborn"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
 
-#include "it_download.iss"
+#include "Add-Ons\it_download.iss"
 
 [Setup]
 AppName={#MyAppName}
@@ -24,9 +24,9 @@ DisableWelcomePage=no
 OutputBaseFilename=RSSRebornInstaller
 SetupLogging=yes
 SolidCompression=yes
-WizardImageFile=backgroundinstaller.bmp
+WizardImageFile=images\backgroundinstaller.bmp
 WizardImageStretch=no
-WizardSmallImageFile=icon.bmp
+WizardSmallImageFile=images\icon.bmp
 WizardStyle=modern
 
 [Languages]
@@ -37,10 +37,10 @@ WelcomeLabel2=This will install [name/ver] on your computer.%n%nMod created and 
 
 [Files]
 Source: "C:\Program Files\7-Zip\7z.exe"; DestDir: "{tmp}"; Flags: dontcopy
-Source: "itdownload.dll"; DestDir: "{tmp}"; Flags: dontcopy
-Source: "7za.exe"; DestDir: "{tmp}"; Flags: dontcopy
-Source: "license.txt"; DestDir: "{app}"; Flags: dontcopy
-Source: "lgpl-3.0.txt"; DestDir: "{app}"; Flags: dontcopy
+Source: "Add-Ons\itdownload.dll"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "Add-Ons\7za.exe"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "Licenses\license.txt"; DestDir: "{app}"; Flags: dontcopy
+Source: "Licenses\lgpl-3.0.txt"; DestDir: "{app}"; Flags: dontcopy
 Source: {#emit ReadReg(HKEY_LOCAL_MACHINE,'Software\Sherlock Software\InnoTools\Downloader','InstallPath','')}\itdownload.dll; Flags: dontcopy; DestDir: {tmp}
 
 [Code]
