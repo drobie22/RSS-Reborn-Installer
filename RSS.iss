@@ -46,7 +46,6 @@ Source: {#emit ReadReg(HKEY_LOCAL_MACHINE,'Software\Sherlock Software\InnoTools\
 [Code]
 const
   GitHubAPI = 'https://api.github.com/repos/';
-  KSP_DIR = 'C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program\GameData';
   MAX_PATH = 260;
 	RequiredSpace = 50000000000;
   RSSConfigsRepo = 'RSS-Reborn/RSS-Configs';
@@ -64,6 +63,8 @@ var
   DownloadsDir: string;
 	EVEAndScattererCheckbox: TNewCheckBox;
   EVEdownloaded: Boolean;
+	KSP_DIR: string;
+  KSPDirPage: TInputDirWizardPage;
 	LatestReleaseAssetsJSON: string;
 	LatestReleaseJSON: string;
   LatestReleaseVersion: string;
@@ -77,7 +78,6 @@ var
   ScattererDownloaded: Boolean;
 	UserCanceled: Boolean;
   wpSelectResolutions: Integer;
-
 	
 type
   TResolutionPages = array of TWizardPage;
@@ -892,8 +892,6 @@ begin
 end;
 
 procedure InitializeWizard;
-// Initializes the installation wizard, including UI elements and variables.
-// Sets up the installer’s user interface and prepares variables.
 var
   I: Integer;
   ComboBox: TComboBox;
@@ -905,8 +903,8 @@ begin
 
   InitializeBodyRepos;
   InitializeVariables;
-	
-	// Read GitHub access token from the registry
+  
+  // Read GitHub access token from the registry
   MyAccessToken := ReadGitHubAccessToken;
 
   RetrieveBodyInfo;
@@ -935,8 +933,13 @@ begin
   EVEAndScattererCheckbox.Caption := '(Optional) I am using Blackrack''s EVE and Scatterer.';
   EVEAndScattererCheckbox.Checked := False;
   Log('EVE and Scatterer download confirmation checkbox created');
+  
+  // Create and configure the KSP directory input page
+  KSPDirPage := CreateInputDirPage(wpWelcome, 'KSP Directory', 'Select the KSP directory', 'Please select the directory where Kerbal Space Program is installed.', False, '');
+  KSPDirPage.Add('');
+  KSPDirPage.Values[0] := 'C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program\GameData';  // Set the default directory
 
-    Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
+  Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
   wpSelectResolutions := Page.ID;
 
   WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(0);
@@ -1503,7 +1506,7 @@ begin
 
   // Initialize and start downloading
   Log('Starting download process.');
-	LogDownloadList; 
+  LogDownloadList; 
   InitializeAndDownload;
   Log('Finished downloading.');
 
@@ -1524,27 +1527,18 @@ begin
     begin
       Result := False; // Prevent navigation if RP-1 confirmation is not checked
       Exit;
-    end
-  end;
-	
-	// Check for enough disk space after the welcome screen
-  if not InitializeSetup then
-  begin
-    Result := False; // Prevent navigation if not enough disk space
-    Exit;
-  end;
+    end;
 
-  // Ensure installation starts after the user has made their resolution selections
-  if (CurPageID = wpSelectResolutions) then
-  begin
-    Log('User has selected resolutions, preparing for installation.');
-    // Any additional validation or preparation based on the selected resolutions
-  end;
-
-  // Start the installation process after the resolutions page (typically wpReady)
-  if (CurPageID = wpReady) then
-  begin
-    StartInstallation;
+    // Validate and set the KSP directory from the input page
+    KSP_DIR := KSPDirPage.Values[0];
+    if KSP_DIR = '' then
+    begin
+      Log('Error: KSP directory is empty.');
+      MsgBox('Failed to set the KSP directory. Please select a valid directory.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    Log('KSP directory set to: ' + KSP_DIR);
   end;
 end;
 	
