@@ -3,7 +3,7 @@
 ; This installer follows RSS Reborn's GitHub Instructions
 
 #define MyAppName "RSS-Reborn"
-#define MyAppVersion "0.1"
+#define MyAppVersion "0.5"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "https://github.com/RSS-Reborn/RSS-Reborn"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
