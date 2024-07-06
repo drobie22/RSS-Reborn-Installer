@@ -24,7 +24,7 @@ DisableWelcomePage=no
 OutputBaseFilename=RSSRebornInstaller
 SetupLogging=yes
 SolidCompression=yes
-WizardImageFile=images\backgroundinstaller.bmp
+WizardImageFile=images\backgroundearth.bmp
 WizardImageStretch=no
 WizardSmallImageFile=images\icon.bmp
 WizardStyle=modern
@@ -48,6 +48,7 @@ const
   GitHubAPI = 'https://api.github.com/repos/';
   KSP_DIR = 'C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program\GameData';
   MAX_PATH = 260;
+	RequiredSpace = 50000000000;
   RSSConfigsRepo = 'RSS-Reborn/RSS-Configs';
   RSSTexturesRepo = 'RSS-Reborn/RSS-Terrain';
   S_OK = 0;
@@ -63,7 +64,6 @@ var
   DownloadsDir: string;
 	EVEAndScattererCheckbox: TNewCheckBox;
   EVEdownloaded: Boolean;
-  I: Integer;
 	LatestReleaseAssetsJSON: string;
 	LatestReleaseJSON: string;
   LatestReleaseVersion: string;
@@ -103,6 +103,42 @@ function AddFileSize(CurrentSize, NewSize: Int64): Int64;
 // Adds two file sizes together to accumulate the total size of files.
 begin
   Result := CurrentSize + NewSize;
+end;
+
+function GetDiskFreeSpaceEx(
+// Uses windows api to check available space
+  lpDirectoryName: string;
+  var lpFreeBytesAvailableToCaller, lpTotalNumberOfBytes, lpTotalNumberOfFreeBytes: Int64): BOOL;
+  external 'GetDiskFreeSpaceExW@kernel32.dll stdcall';
+
+function GetFreeSpace(Drive: String): Int64;
+var
+  FreeAvailable, TotalSpace, TotalFree: Int64;
+begin
+  Result := -1;
+  if GetDiskFreeSpaceEx(Drive, FreeAvailable, TotalSpace, TotalFree) then
+  begin
+    Result := FreeAvailable;
+  end;
+end;
+
+function IsEnoughDiskSpaceAvailable: Boolean;
+var
+  FreeSpace: Int64;
+begin
+  FreeSpace := GetFreeSpace(ExpandConstant('{sd}'));
+  Log('Free disk space: ' + IntToStr(FreeSpace div (1024 * 1024 * 1024)) + ' GB');
+  Result := FreeSpace >= RequiredSpace;
+end;
+
+function InitializeSetup: Boolean;
+begin
+  Result := True;
+  if not IsEnoughDiskSpaceAvailable then
+  begin
+    MsgBox('You need at least 50 GB of free disk space to install this application.', mbError, MB_OK);
+    Result := False;
+  end;
 end;
 	
 procedure DeinitializeVariables;
@@ -1435,6 +1471,13 @@ begin
       Result := False; // Prevent navigation if RP-1 confirmation is not checked
       Exit;
     end
+  end;
+	
+	// Check for enough disk space after the welcome screen
+  if not InitializeSetup then
+  begin
+    Result := False; // Prevent navigation if not enough disk space
+    Exit;
   end;
 
   // Ensure installation starts after the user has made their resolution selections
