@@ -75,6 +75,7 @@ var
   SizesList: array of TStringList;
 	SizeLabelList: array of TLabel;
   ScattererDownloaded: Boolean;
+	UserCanceled: Boolean;
   wpSelectResolutions: Integer;
 
 	
@@ -406,14 +407,15 @@ begin
       if HttpCli.Status = 403 then
       begin
         Log('HTTP 403 Forbidden error. Possible rate limit exceeded.');
-        if MsgBox('GitHub download rate limit exceeded. Please wait a moment before retrying. Click OK to retry now.', mbInformation, MB_OK) = IDOK then
+        if MsgBox('GitHub download rate limit exceeded. Please wait a moment before retrying. Click OK to retry now, or Cancel to exit.', mbInformation, MB_OKCANCEL) = IDOK then
         begin
           Log('User acknowledged rate limit message. Retrying...');
           GetLatestReleaseHTTPInfo(Repo); // Retry fetching release info
         end
         else
         begin
-          Log('User canceled retry. Exiting.');
+          Log('User canceled retry. Exiting installer.');
+          UserCanceled := True; // Set the cancellation flag
           Exit;
         end;
       end;
@@ -591,7 +593,19 @@ begin
 
   for I := 0 to High(BodyRepos) do
   begin
+    if UserCanceled then
+    begin
+      Log('Installation canceled by user. Exiting body info retrieval loop.');
+      Exit;
+    end;
+
     GetLatestReleaseHTTPInfo(BodyRepos[I]);
+    if UserCanceled then
+    begin
+      Log('Installation canceled by user after HTTP request. Exiting body info retrieval loop.');
+      Exit;
+    end;
+
     BodyVersions[I] := LatestReleaseVersion;
     BodySizes[I] := GetFileSizeForLatestReleaseFromAssets(LatestReleaseAssetsJSON);
 
@@ -608,6 +622,7 @@ var
   JSON: string;
   I, J: Integer;
 begin
+  UserCanceled := False;
   Result := -1;
   try
     HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
