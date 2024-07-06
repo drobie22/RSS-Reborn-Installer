@@ -2,7 +2,7 @@
 
 Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer! This installer is designed to help you easily set up Ballisticfox's RSS Reborn mod for Rp-1 (RSS/RO).
 
-![RSS Reborn Installer](images/installer_preview.png)
+![RSS Reborn Installer](images/wizard.png)
 
 ## Features
 
