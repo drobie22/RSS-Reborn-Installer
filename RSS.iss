@@ -39,6 +39,8 @@ WelcomeLabel2=This will install [name/ver] on your computer.%n%nMod created and 
 Source: "C:\Program Files\7-Zip\7z.exe"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "itdownload.dll"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "7za.exe"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "license.txt"; DestDir: "{app}"; Flags: dontcopy
+Source: "lgpl-3.0.txt"; DestDir: "{app}"; Flags: dontcopy
 Source: {#emit ReadReg(HKEY_LOCAL_MACHINE,'Software\Sherlock Software\InnoTools\Downloader','InstallPath','')}\itdownload.dll; Flags: dontcopy; DestDir: {tmp}
 
 [Code]
@@ -120,7 +122,7 @@ begin
   MyAccessToken := GetEnv('MY_ACCESS_TOKEN'); // Get token from environment variable
   if MyAccessToken = '' then
   begin
-    Log('GitHub Access Token is not set.', mbError, MB_OK);
+    Log('GitHub Access Token is not set.');
     Exit;
   end;
   Log('GitHub Access Token retrieved: ' + MyAccessToken); // Log token retrieval for debugging purposes
@@ -476,7 +478,7 @@ begin
         Result := True;
     end;
   except
-    Log('Failed to check if latest release has files. Exception: ' + GetExceptionMessage, mbError, MB_OK);
+    Log('Failed to check if latest release has files. Exception: ' + GetExceptionMessage);
   end;
 end;
 
@@ -1008,7 +1010,7 @@ begin
 
     Log('Extraction completed');
   except
-    Log('Failed to move downloaded EVE and Scatterer files. Exception: ' + GetExceptionMessage, mbError, MB_OK);
+    Log('Failed to move downloaded EVE and Scatterer files. Exception: ' + GetExceptionMessage);
   end;
 end;
 
