@@ -50,48 +50,85 @@ const
   RSSTexturesRepo = 'RSS-Reborn/RSS-Terrain';
   S_OK = 0;
   URLMON_DLL = 'urlmon.dll';
+	WM_SETTEXT = $000C;
   
 var
+  AssetDataList: array of TStringList;
   BodyRepos: array[0..11] of string;
+  BodySizes: array of string;	
+	BodyVersions: array of string;
   DownloadList: TStringList;
   DownloadsDir: string;
+	EVEAndScattererCheckbox: TNewCheckBox;
   EVEdownloaded: Boolean;
   I: Integer;
+	LatestReleaseAssetsJSON: string;
+	LatestReleaseJSON: string;
+  LatestReleaseVersion: string;
 	MyAccessToken: string;
   Resolution: string;
   ResolutionCombos: array of TComboBox;
 	ResolutionPages: array of TWizardPage;
   RP1Checkbox: TNewCheckBox;
-	EVEAndScattererCheckbox: TNewCheckBox;
+	Sizes: array of Int64;
+  SizesList: array of TStringList;
+	SizeLabelList: array of TLabel;
   ScattererDownloaded: Boolean;
 	
 type
   TResolutionPages = array of TWizardPage;
   TResolutionCombos = array of TComboBox;
-	
+
 procedure InitializeVariables;
+// Initializes global variables to their default states.
 begin
   EVEDownloaded := False;
   ScattererDownloaded := False;
 	DownloadList := TStringList.Create;
 end;
+
+procedure InitializeArrayLengths;
+// Sets the lengths of arrays to prepare for storing data.
+begin
+  // Set the lengths of the arrays
+  SetLength(Sizes, 12);
+  SetLength(SizeLabelList, 12);
+end;
+
+function AddFileSize(CurrentSize, NewSize: Int64): Int64;
+// Adds two file sizes together to accumulate the total size of files.
+begin
+  Result := CurrentSize + NewSize;
+end;
 	
 procedure DeinitializeVariables;
+// Frees allocated resources. Prevents memory leaks by releasing resources.
 begin
   DownloadList.Free;
 end;	
+
+procedure LogSizeError(Body: String; Size: Int64);
+// Logs an error message for file size overflow.
+begin
+  Log(Format('Overflow detected for %s with size: %d', [Body, Size]));
+end;
 	
 procedure InitializeGitHubAPI;
-// Used to allow downloads on GitHub without being blocked
+// Retrieves GitHub access token from environment variable. 
+// Allows authenticated requests to GitHub API.
 begin
   MyAccessToken := GetEnv('MY_ACCESS_TOKEN'); // Get token from environment variable
   if MyAccessToken = '' then
   begin
-    MsgBox('GitHub Access Token is not set.', mbError, MB_OK);
+    Log('GitHub Access Token is not set.', mbError, MB_OK);
     Exit;
   end;
   Log('GitHub Access Token retrieved: ' + MyAccessToken); // Log token retrieval for debugging purposes
 end;
+
+function SendMessage(hWnd: LongInt; Msg: LongInt; wParam: LongInt; lParam: LongInt): LongInt;
+// Helper function
+  external 'SendMessageA@user32.dll stdcall';
 
 function DirectoryExists(Dir: string): Boolean;
 // Helper function
@@ -121,7 +158,7 @@ begin
 end;
 
 function LastDelimiter(const Delimiters, S: string): Integer;
-// Helper function for string manipulation
+// Helper function
 var
   I: Integer;
 begin
@@ -135,7 +172,7 @@ begin
 end;
 
 function ExtractFileNameWithoutExt(const FileName: string): string;
-// Helper function for string manipulation
+// Helper function
 var
   I: Integer;
 begin
@@ -146,6 +183,7 @@ begin
 end;
 
 function FindNextQuote(const JSON: string; StartIndex: Integer): Integer;
+// Helper function
 var
   I: Integer;
 begin
@@ -163,7 +201,7 @@ begin
 end;
 
 function LastCharPos(const Substr: string; const S: string): Integer;
-// Helper function for string manipulation
+// Helper function
 var
   i: Integer;
 begin
@@ -179,7 +217,7 @@ begin
 end;
 
 function GetSubstringPosition(const SubStr, Str: string; StartPos: Integer): Integer;
-// Helper function for string manipulation
+// Helper function
 var
   TempStr: string;
 begin
@@ -192,6 +230,7 @@ begin
 end;
 
 function PosEx(const SubStr, S: string; Offset: Integer): Integer;
+// Helper function
 var
   TempStr: string;
 begin
@@ -202,7 +241,8 @@ begin
 end;
 
 procedure InitializeBodyRepos;
-// Identifies all planetary bodies (and the sun/moon too)
+// Initializes the array with GitHub repositories for planetary bodies.
+// Provides the list of repositories to fetch assets from.
 begin
   Log('Initializing BodyRepos array');
   BodyRepos[11] := 'RSS-Reborn/RSS-Sol';
@@ -221,7 +261,7 @@ begin
 end;
 
 function Extract7Zip(ArchivePath, DestDir: string): Boolean;
-// Uses 7 Zip to extract files. User will need to have 7 Zip. 7Za.exe is included with installer
+// Extracts archives using 7-Zip.
 var
   ZipPath: string;
   ResultCode: Integer;
@@ -235,7 +275,6 @@ begin
   if not FileExists(ZipPath) then
   begin
     Log('7-Zip executable not found!');
-    MsgBox('7-Zip executable not found!', mbError, MB_OK);
     Result := False;
     Exit;
   end;
@@ -244,7 +283,6 @@ begin
   if not Exec(ZipPath, 'x "' + ArchivePath + '" -o"' + DestDir + '" -y', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     Log(Format('Failed to extract %s, error code: %d', [ArchivePath, ResultCode]));
-    MsgBox('Failed to extract ' + ArchivePath, mbError, MB_OK);
     Result := False;
     Exit;
   end;
@@ -253,7 +291,6 @@ begin
   if ResultCode <> 0 then
   begin
     Log(Format('7-Zip returned error code %d while extracting %s', [ResultCode, ArchivePath]));
-    MsgBox('7-Zip returned error code ' + IntToStr(ResultCode) + ' while extracting ' + ArchivePath, mbError, MB_OK);
     Result := False;
     Exit;
   end;
@@ -262,204 +299,152 @@ begin
   Result := True;
 end;
 
-function GetLatestReleaseAssets(Repo, Resolution: string): string;
-var
-  HttpCli: Variant;
-  JSON, TagName, AssetsURL, AssetsJSON, AssetName, BrowserDownloadURL: string;
-  AccessToken: string;
-  AssetURLs: TStringList;
-  I, J, StartPos: Integer;
+function FormatSize(SizeInBytes: Integer): string;
+// Converts file sizes from bytes to MB.
 begin
-  Result := '';
-  AssetURLs := TStringList.Create;
+  Result := IntToStr(Round(SizeInBytes / 1048576)) + ' MB'; // Convert bytes to MB and format
+end;
 
-  Log('GetLatestReleaseAssets called with Repo: ' + Repo + ' and Resolution: ' + Resolution);
+function GetFileSizeForLatestReleaseFromAssets(AssetsJSON: string): string;
+// Calculates the total size of assets from the JSON response.
+var
+  I, J, Size, TotalSize: Int64;
+begin
+  Result := 'Unknown';
+  TotalSize := 0;
 
-  // Check if the Repo string is already a full URL
-  if Pos('https://', Repo) = 1 then
+  I := Pos('"size":', AssetsJSON);
+  while I > 0 do
   begin
-    Log('Repo is a full URL, returning directly: ' + Repo);
-    Result := Repo;
-    AssetURLs.Free;
-    Exit;
+    I := I + Length('"size":');
+    J := PosEx(',', AssetsJSON, I);
+    Size := StrToInt64Def(Copy(AssetsJSON, I, J - I), -1);
+    if Size <> -1 then
+      TotalSize := TotalSize + Size;
+    I := PosEx('"size":', AssetsJSON, J);
   end;
 
-  try
-    // Retrieve the access token from the environment variable
-    AccessToken := GetEnv('MY_ACCESS_TOKEN');
-    if AccessToken = '' then
-    begin
-      Log('No GitHub Access Token found, proceeding without it.');
-    end
-    else
-    begin
-      Log('GitHub Access Token retrieved.');
-    end;
+  if TotalSize > 0 then
+    Result := FormatSize(TotalSize); // Ensure this formats to MB
+end;
 
+procedure GetLatestReleaseHTTPInfo(Repo: string);
+// Fetches the latest release information from GitHub.
+var
+  HttpCli: Variant;
+  I, J: Integer;
+  AccessToken: string;
+  AssetsURL: string;
+begin
+  Log('Fetching latest release info for ' + Repo);
+  LatestReleaseJSON := '';
+  LatestReleaseAssetsJSON := '';
+  LatestReleaseVersion := '';
+
+  try
+    AccessToken := GetEnv('MY_ACCESS_TOKEN');
     HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
     HttpCli.Open('GET', GitHubAPI + Repo + '/releases/latest', False);
     HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
-    
     if AccessToken <> '' then
-    begin
-      HttpCli.SetRequestHeader('Authorization', 'token ' + AccessToken); // Add authorization header if token is present
-      Log('Authorization header set with token.');
-    end;
+      HttpCli.SetRequestHeader('Authorization', 'token ' + AccessToken);
 
-    Log('Sending request to: ' + GitHubAPI + Repo + '/releases/latest');
     HttpCli.Send;
 
     if HttpCli.Status = 200 then
     begin
-      Log('Received HTTP 200 OK response.');
-      JSON := HttpCli.ResponseText;
-      Log('Latest release JSON: ' + JSON);
+      LatestReleaseJSON := HttpCli.ResponseText;
+      if LatestReleaseJSON = '' then
+      begin
+        Log('Empty response for latest release info');
+        Exit;
+      end;
 
-      // Extract tag name
-      I := Pos('"tag_name":"', JSON);
+      I := Pos('"tag_name":"', LatestReleaseJSON);
       if I > 0 then
       begin
         I := I + Length('"tag_name":"');
-        J := FindNextQuote(JSON, I);
+        J := FindNextQuote(LatestReleaseJSON, I);
         if J > 0 then
-        begin
-          TagName := Copy(JSON, I, J - I);
-          Log('Extracted Tag Name: ' + TagName);
-        end
-        else
-        begin
-          Log('Failed to find the end of tag name.');
-        end;
-      end
-      else
-      begin
-        Log('Failed to find tag name in the JSON.');
+          LatestReleaseVersion := Copy(LatestReleaseJSON, I, J - I);
       end;
 
-      // Extract assets_url
-      I := Pos('"assets_url":"', JSON);
+      I := Pos('"assets_url":"', LatestReleaseJSON);
       if I > 0 then
       begin
         I := I + Length('"assets_url":"');
-        J := FindNextQuote(JSON, I);
+        J := FindNextQuote(LatestReleaseJSON, I);
         if J > 0 then
         begin
-          AssetsURL := Copy(JSON, I, J - I);
-          Log('Extracted Assets URL: ' + AssetsURL);
-
-          // Request the assets JSON
+          AssetsURL := Copy(LatestReleaseJSON, I, J - I);
           HttpCli.Open('GET', AssetsURL, False);
-          HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
           if AccessToken <> '' then
-          begin
-            HttpCli.SetRequestHeader('Authorization', 'token ' + AccessToken); // Add authorization header if token is present
-            Log('Authorization header set with token for assets URL.');
-          end;
+            HttpCli.SetRequestHeader('Authorization', 'token ' + AccessToken);
 
-          Log('Sending request to assets URL: ' + AssetsURL);
           HttpCli.Send;
-
           if HttpCli.Status = 200 then
           begin
-            Log('Received HTTP 200 OK response for assets URL.');
-            AssetsJSON := HttpCli.ResponseText;
-            Log('Assets JSON: ' + AssetsJSON);
-
-            // Extract and filter asset names based on the selected resolution
-            StartPos := 1;
-            while StartPos > 0 do
-            begin
-              I := PosEx('"name":"', AssetsJSON, StartPos);
-              if I > 0 then
-              begin
-                I := I + Length('"name":"');
-                J := FindNextQuote(AssetsJSON, I);
-                if J > 0 then
-                begin
-                  AssetName := Copy(AssetsJSON, I, J - I);
-                  Log('Found asset: ' + AssetName);
-
-                  // Check if the asset name contains the selected resolution
-                  if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
-                  begin
-                    // Extract the browser download URL
-                    I := PosEx('"browser_download_url":"', AssetsJSON, J);
-                    if I > 0 then
-                    begin
-                      I := I + Length('"browser_download_url":"');
-                      J := FindNextQuote(AssetsJSON, I);
-                      if J > 0 then
-                      begin
-                        BrowserDownloadURL := Copy(AssetsJSON, I, J - I);
-                        Log('Adding asset URL: ' + BrowserDownloadURL);
-                        AssetURLs.Add(BrowserDownloadURL);
-                      end
-                      else
-                      begin
-                        Log('Failed to find the end of browser download URL.');
-                      end;
-                    end
-                    else
-                    begin
-                      Log('Failed to find browser download URL for asset: ' + AssetName);
-                    end;
-                  end;
-
-                  StartPos := J + 1;  // Move past the current asset name
-                end
-                else
-                begin
-                  Log('Failed to find the end of asset name.');
-                end;
-              end
-              else
-                Break;  // Exit the loop if no more assets are found
-            end;
-          end
-          else if HttpCli.Status = 404 then
-          begin
-            Log('Assets not found for ' + Repo + '. Status: 404');
-            MsgBox('Assets not found for ' + Repo + '. Status: 404', mbError, MB_OK);
+            LatestReleaseAssetsJSON := HttpCli.ResponseText;
+            if LatestReleaseAssetsJSON = '' then
+              Log('No assets found for the latest release');
           end
           else
-          begin
-            Log('Failed to retrieve assets for ' + Repo + '. Status: ' + IntToStr(HttpCli.Status));
-            MsgBox('Failed to retrieve assets for ' + Repo + '. Status: ' + IntToStr(HttpCli.Status), mbError, MB_OK);
-          end;
-        end
-        else
-        begin
-          Log('Failed to find the end of assets URL.');
+            Log('Failed to fetch assets info, status: ' + IntToStr(HttpCli.Status));
         end;
-      end
-      else
-      begin
-        Log('Failed to find assets URL in the JSON.');
       end;
     end
     else
     begin
-      Log('Failed to get the latest release for ' + Repo + '. Status: ' + IntToStr(HttpCli.Status));
-      MsgBox('Failed to get the latest release for ' + Repo + '. Status: ' + IntToStr(HttpCli.Status), mbError, MB_OK);
+      Log('Failed to fetch latest release info, status: ' + IntToStr(HttpCli.Status));
     end;
   except
-    Log('Exception during HTTP request for latest release assets of ' + Repo + ': ' + GetExceptionMessage);
-    MsgBox('Exception during HTTP request for latest release assets of ' + Repo + ': ' + GetExceptionMessage, mbError, MB_OK);
   end;
+end;
 
-  // Now that we have the URLs, we proceed to add them using ITD_AddFile
-  for I := 0 to AssetURLs.Count - 1 do
+function GetLatestReleaseAssets(Repo, Resolution: string; var Version: string; var Size: string): string;
+// Retrieves download URLs for assets matching a specific resolution.
+var
+  AssetName, BrowserDownloadURL: string;
+  I, J, StartPos: Integer;
+  AssetURLs: TStringList;
+begin
+  Result := '';
+  Version := LatestReleaseVersion; // Use the version stored by GetLatestReleaseHTTPInfo
+  Size := GetFileSizeForLatestReleaseFromAssets(LatestReleaseAssetsJSON); // Use the size calculation function
+  AssetURLs := TStringList.Create;
+
+  StartPos := 1;
+  while StartPos > 0 do
   begin
-    try
-      Log('Adding asset to download list: ' + AssetURLs[I]);
-      ITD_AddFile(PChar(AssetURLs[I]), PChar(ExpandConstant('{tmp}\') + ExtractFileName(AssetURLs[I])));
-    except
-      Log('Exception while adding asset to download list: ' + AssetURLs[I] + ': ' + GetExceptionMessage);
-      MsgBox('Exception while adding asset to download list: ' + AssetURLs[I] + ': ' + GetExceptionMessage, mbError, MB_OK);
-    end;
+    I := PosEx('"name":"', LatestReleaseAssetsJSON, StartPos);
+    if I > 0 then
+    begin
+      I := I + Length('"name":"');
+      J := FindNextQuote(LatestReleaseAssetsJSON, I);
+      if J > 0 then
+      begin
+        AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
+        if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
+        begin
+          I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
+          if I > 0 then
+          begin
+            I := I + Length('"browser_download_url":"');
+            J := FindNextQuote(LatestReleaseAssetsJSON, I);
+            if J > 0 then
+            begin
+              BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
+              AssetURLs.Add(BrowserDownloadURL);
+            end;
+          end;
+        end;
+        StartPos := J + 1;
+      end;
+    end
+    else
+      Break;
   end;
 
-  // If there are any URLs, concatenate them into a single string
   if AssetURLs.Count > 0 then
   begin
     for I := 0 to AssetURLs.Count - 1 do
@@ -474,7 +459,7 @@ begin
 end;
 
 function LatestReleaseHasFiles(URL: string): Boolean;
-// Need to check if a GitHub release is legit
+// Checks if a GitHub release has associated files.
 var
   WinHttpReq: Variant;
 begin
@@ -491,12 +476,12 @@ begin
         Result := True;
     end;
   except
-    MsgBox('Failed to check if latest release has files. Exception: ' + GetExceptionMessage, mbError, MB_OK);
+    Log('Failed to check if latest release has files. Exception: ' + GetExceptionMessage, mbError, MB_OK);
   end;
 end;
 
 function ExtractResolution(AssetName: String): String;
-// Identifies available resolutions in GitHub Releases of Bodies
+// Extracts resolution information from asset names.
 var
   UnderscorePos, DashPos, DelimiterPos: Integer;
   Resolution: String;
@@ -533,206 +518,8 @@ begin
   Result := Resolution;
 end;
 
-procedure PopulateResolutions(ComboBox: TComboBox; Repo: string);
-var
-  AssetURLs: TStringList;
-  AssetName, Resolution: string;
-  I: Integer;
-  AddedResolutions: TStringList;
-  URLs: string;
-begin
-  AddedResolutions := TStringList.Create;
-  AssetURLs := TStringList.Create;
-  try
-    Log('Populating resolutions for ' + Repo);
-
-    // Clear any existing items in the ComboBox and the list of added resolutions
-    ComboBox.Items.Clear;
-    AddedResolutions.Clear;
-
-    // Get the list of asset URLs as a single string, then split it into a TStringList
-    URLs := GetLatestReleaseAssets(Repo, '');
-    AssetURLs.Text := URLs;
-
-    if AssetURLs.Count = 0 then
-    begin
-      Log('Failed to get assets for ' + Repo);
-      Exit;
-    end;
-
-    // Process each asset URL to extract resolutions
-    for I := 0 to AssetURLs.Count - 1 do
-    begin
-      AssetName := ExtractFileName(AssetURLs[I]);
-      Log('Found asset: ' + AssetName);
-
-      // Extract resolution from the asset name
-      Resolution := ExtractResolution(AssetName);
-      Log('Extracted resolution: ' + Resolution);
-
-      // Check if this resolution has already been added
-      if (Resolution <> '') and (AddedResolutions.IndexOf(Resolution) = -1) then
-      begin
-        Log('Adding resolution to ComboBox: ' + Resolution);
-        ComboBox.Items.Add(Resolution); // Add item to ComboBox
-        AddedResolutions.Add(Resolution); // Add resolution to the list of added resolutions
-      end;
-    end;
-
-    // Set default item in ComboBox if resolutions were added
-    if ComboBox.Items.Count > 0 then
-    begin
-      Log('Setting default item in ComboBox');
-      ComboBox.ItemIndex := 0; // Default to the first item
-    end;
-  except
-    Log('Exception occurred while populating resolutions for ' + Repo + ': ' + GetExceptionMessage);
-    MsgBox('Failed to populate resolutions for ' + Repo + '. Exception: ' + GetExceptionMessage, mbError, MB_OK);
-  end;
-
-  AddedResolutions.Free;
-  AssetURLs.Free;
-end;
-
-function CheckRP1Confirmation: Boolean;
-// User is required to have RP-1 RSS/RO Modpack installed and working before installing RSS Reborn
-begin
-  Log('Checking RP-1 confirmation and EVE/Scatterer download confirmation');
-  Result := True;
-  
-  if not RP1Checkbox.Checked then
-  begin
-    Log('RP-1 confirmation not checked');
-    MsgBox('Please confirm that you have installed and launched RP-1 at least once. RSS Reborn will not work if RP-1 does not work.', mbError, MB_OK);
-    Result := False; // Prevents proceeding to the next wizard page
-  end
-  else
-  begin
-    Log('RP-1 confirmation checked');
-  end;
-  
-  if EVEAndScattererCheckbox.Checked then
-  begin
-    Log('EVE and Scatterer download confirmation checked');
-    MsgBox('Please ensure that Blackrack''s Patreon EVE and Scatterer zip folders are in your downloads.', mbInformation, MB_OK);
-  end;
-end;
-
-procedure InitializeWizard;
-var
-  i: Integer;
-  ComboBox: TComboBox;
-	Page: TWizardPage;
-begin
-  Log('Initializing wizard');
-
-  // BodyRepos can be initialized here as it doesn't involve any network operations
-  InitializeBodyRepos;
-  InitializeVariables;
-
-  // Initialize ITD
-  try
-    ITD_Init();
-    Log('ITD_Init successful');
-  except
-    Log('ITD_Init failed: ' + GetExceptionMessage);
-    MsgBox('Initialization of download library failed: ' + GetExceptionMessage, mbError, MB_OK);
-    Exit;
-  end;
-  
-  // Initialize UI
-  try
-    ITD_Internal_InitUI(WizardForm.Handle);
-    Log('ITD_Internal_InitUI successful');
-  except
-    Log('ITD_Internal_InitUI failed: ' + GetExceptionMessage);
-    MsgBox('UI initialization failed: ' + GetExceptionMessage, mbError, MB_OK);
-    Exit;
-  end;
-
-  // Initialize DownloadsDir
-  DownloadsDir := ExpandConstant('{userdocs}\Downloads');
-  Log('Downloads directory initialized: ' + DownloadsDir);
-
-  // Set options if needed, for example, set the download timeout to 60 seconds:
-  ITD_SetOption('Timeout', '60');
-  ITD_SetOption('HTTPAgent', 'InnoSetupDownloader');
-
-  // Create RP-1 installation confirmation checkbox
-  RP1Checkbox := TNewCheckBox.Create(WizardForm);
-  RP1Checkbox.Parent := WizardForm.WelcomePage;
-  RP1Checkbox.Left := ScaleX(18); // Adjust left position
-  RP1Checkbox.Top := ScaleY(220); // Adjust top position
-  RP1Checkbox.Width := WizardForm.ClientWidth - ScaleX(36);
-  RP1Checkbox.Height := ScaleY(40); // Adjust height for text wrapping
-  RP1Checkbox.Caption := 'I confirm that I have successfully run RP-1 once.';
-  RP1Checkbox.Checked := False; // Default to unchecked
-  Log('RP-1 installation confirmation checkbox created');
-
-  // Create EVE and Scatterer download confirmation checkbox
-  EVEAndScattererCheckbox := TNewCheckBox.Create(WizardForm);
-  EVEAndScattererCheckbox.Parent := WizardForm.WelcomePage;
-  EVEAndScattererCheckbox.Left := ScaleX(18); // Adjust left position
-  EVEAndScattererCheckbox.Top := ScaleY(260); // Adjust top position
-  EVEAndScattererCheckbox.Width := WizardForm.ClientWidth - ScaleX(36);
-  EVEAndScattererCheckbox.Height := ScaleY(40); // Adjust height for text wrapping
-  EVEAndScattererCheckbox.Caption := '(Optional) I am using Blackrack''s EVE and Scatterer.';
-  EVEAndScattererCheckbox.Checked := False; // Default to unchecked
-  Log('EVE and Scatterer download confirmation checkbox created');
-  
-  // Create a single custom page for selecting resolutions
-  Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
-  SetLength(ResolutionCombos, Length(BodyRepos));
-
-  for i := 0 to High(BodyRepos) do
-  begin
-    ComboBox := TComboBox.Create(Page);
-    ComboBox.Parent := Page.Surface;
-    ComboBox.Left := ScaleX(18);
-    ComboBox.Top := ScaleY(50 + (i * 40));  // Adjust top position for each dropdown
-    ComboBox.Width := Page.SurfaceWidth - ScaleX(36);
-    ResolutionCombos[i] := ComboBox;
-    PopulateResolutions(ComboBox, BodyRepos[i]);
-    Log('Dropdown for ' + BodyRepos[i] + ' created');
-  end;
-
-  Log('Wizard initialization completed');
-end;
-
-procedure MoveDownloadedEVEAndScatterer;
-// If user has paid for Volumentric Clouds, installer takes the zips from the downloads folder
-begin
-  try
-    Log('Moving downloaded EVE and Scatterer files');
-
-    if FileExists(DownloadsDir + '\EnvironmentalVisualEnhancements.zip') then
-    begin
-      Log('Extracting EnvironmentalVisualEnhancements.zip');
-      Extract7Zip(DownloadsDir + '\EnvironmentalVisualEnhancements.zip', KSP_DIR);
-    end
-    else
-    begin
-      Log('EnvironmentalVisualEnhancements.zip not found');
-    end;
-
-    if FileExists(DownloadsDir + '\Scatterer.zip') then
-    begin
-      Log('Extracting Scatterer.zip');
-      Extract7Zip(DownloadsDir + '\Scatterer.zip', KSP_DIR);
-    end
-    else
-    begin
-      Log('Scatterer.zip not found');
-    end;
-
-    Log('Extraction completed');
-  except
-    MsgBox('Failed to move downloaded EVE and Scatterer files. Exception: ' + GetExceptionMessage, mbError, MB_OK);
-  end;
-end;
-
 function GetLatestReleaseVersion(Repo: string): string;
-// Retrieves the latest version of GitHub releases for assets, as some require them in file name
+// Fetches the latest release version from GitHub.
 var
   HttpCli: Variant;
   JSON, TagName: string;
@@ -773,71 +560,551 @@ begin
     else
     begin
       Log('Failed to get the latest release version for ' + Repo + '. Status: ' + IntToStr(HttpCli.Status));
-      MsgBox('Failed to get the latest release version for ' + Repo + '. Status: ' + IntToStr(HttpCli.Status), mbError, MB_OK);
     end;
   except
     Log('Exception during HTTP request for latest release version of ' + Repo + ': ' + GetExceptionMessage);
-    MsgBox('Exception during HTTP request for latest release version of ' + Repo + ': ' + GetExceptionMessage, mbError, MB_OK);
   end;
 end;
 
-procedure InitializeDownloadsDir;
-// Installer needs a place to download from, temp location is on desktop
+procedure RetrieveBodyInfo;
+// Retrieves version and size information for each body repository.
+var
+  i: Integer;
+  Size: string;
 begin
+  Log('Retrieving body info');
+  SetLength(BodyVersions, Length(BodyRepos));
+  SetLength(BodySizes, Length(BodyRepos));
+
+  for i := 0 to High(BodyRepos) do
+  begin
+    GetLatestReleaseHTTPInfo(BodyRepos[i]);
+    BodyVersions[i] := LatestReleaseVersion;
+    BodySizes[i] := GetFileSizeForLatestReleaseFromAssets(LatestReleaseAssetsJSON);
+  end;
+end;
+
+function GetAssetSizeFromRepo(Repo: string; AssetName: string): Integer;
+// Fetches the size of a specific asset from a GitHub repository.
+var
+  HttpCli: Variant;
+  JSON: string;
+  I, J: Integer;
+begin
+  Result := -1;
+  try
+    HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
+    HttpCli.Open('GET', GitHubAPI + Repo + '/releases/latest', False);
+    HttpCli.SetRequestHeader('User-Agent', 'InnoSetup');
+    if MyAccessToken <> '' then
+    begin
+      HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
+      Log('Authorization header set with token.');
+    end
+    else
+    begin
+      Log('GitHub Access Token is empty.');
+    end;
+    HttpCli.Send;
+
+    if HttpCli.Status = 200 then
+    begin
+      JSON := HttpCli.ResponseText;
+      I := Pos('"name":"' + AssetName + '"', JSON);
+      if I > 0 then
+      begin
+        I := PosEx('"size":', JSON, I);
+        if I > 0 then
+        begin
+          I := I + Length('"size":');
+          J := PosEx(',', JSON, I);
+          Result := StrToIntDef(Copy(JSON, I, J - I), -1);
+        end;
+      end;
+    end
+    else
+    begin
+      Log('Failed to get asset size from ' + Repo + '. Status: ' + IntToStr(HttpCli.Status));
+    end;
+  except
+    Log('Exception during HTTP request for asset size of ' + AssetName + ' in ' + Repo + ': ' + GetExceptionMessage);
+  end;
+end;
+
+procedure UpdateSizeLabel(ComboBoxTag: Integer);
+// Updates the label showing the total size of selected resolutions.
+begin
+  if ComboBoxTag < Length(SizeLabelList) then
+  begin
+    if Assigned(SizeLabelList[ComboBoxTag]) then
+    begin
+      SizeLabelList[ComboBoxTag].Caption := Format('Total Size: %d MB', [Sizes[ComboBoxTag] div (1024 * 1024)]);
+    end
+    else
+    begin
+      Log(Format('SizeLabelList[%d] is not assigned (nil).', [ComboBoxTag]));
+    end;
+  end;
+end;
+
+procedure PopulateResolutions(ComboBox: TComboBox; Repo: string; var Sizes: TStringList);
+// Populates the resolution dropdowns for each body.
+var
+  i: Integer;
+  Body: String;
+  AssetSize: Int64;
+  AssetName, Resolution: string;
+  J, StartPos, Size: Int64;
+  AddedResolutions, ResolutionSizes: TStringList;
+begin
+  InitializeArrayLengths;
+
+  AddedResolutions := TStringList.Create;
+  ResolutionSizes := TStringList.Create;
+  try
+    Log('Populating resolutions for ' + Repo);
+    ComboBox.Items.Clear;
+    Sizes.Clear;
+
+    GetLatestReleaseHTTPInfo(Repo);
+
+    StartPos := 1;
+    while StartPos > 0 do
+    begin
+      I := PosEx('"name":"', LatestReleaseAssetsJSON, StartPos);
+      if I > 0 then
+      begin
+        I := I + Length('"name":"');
+        J := FindNextQuote(LatestReleaseAssetsJSON, I);
+        if J > 0 then
+        begin
+          AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
+          Resolution := ExtractResolution(AssetName);
+          Log('Found asset: ' + AssetName + ' with resolution: ' + Resolution);
+
+          Size := 0;
+          I := PosEx('"size":', LatestReleaseAssetsJSON, J);
+          if I > 0 then
+          begin
+            I := I + Length('"size":');
+            StartPos := PosEx(',', LatestReleaseAssetsJSON, I);
+            Size := StrToInt64Def(Copy(LatestReleaseAssetsJSON, I, StartPos - I), 0);
+            Log('Size for asset ' + AssetName + ': ' + IntToStr(Size));
+
+            // Accumulate sizes for each resolution, including multi-part files
+            if Resolution <> '' then
+            begin
+              if AddedResolutions.IndexOf(Resolution) = -1 then
+              begin
+                ComboBox.Items.Add(Resolution);
+                AddedResolutions.Add(Resolution);
+                ResolutionSizes.Add(IntToStr(Size));
+                Log('Added resolution: ' + Resolution + ' with size: ' + IntToStr(Size));
+              end
+              else
+              begin
+                ResolutionSizes[AddedResolutions.IndexOf(Resolution)] :=
+                  IntToStr(StrToInt64(ResolutionSizes[AddedResolutions.IndexOf(Resolution)]) + Size);
+                Log('Updated resolution: ' + Resolution + ' with new size: ' + ResolutionSizes[AddedResolutions.IndexOf(Resolution)]);
+              end;
+            end;
+
+            // Check for multi-part files and accumulate their sizes
+            while PosEx('.00', AssetName, 1) > 0 do
+            begin
+              I := PosEx('"size":', LatestReleaseAssetsJSON, StartPos + 1);
+              if I > 0 then
+              begin
+                I := I + Length('"size":');
+                StartPos := PosEx(',', LatestReleaseAssetsJSON, I);
+                Size := StrToInt64Def(Copy(LatestReleaseAssetsJSON, I, StartPos - I), 0);
+                Log('Found multi-part file with size: ' + IntToStr(Size));
+                if AddedResolutions.IndexOf(Resolution) <> -1 then
+                begin
+                  ResolutionSizes[AddedResolutions.IndexOf(Resolution)] :=
+                    IntToStr(StrToInt64(ResolutionSizes[AddedResolutions.IndexOf(Resolution)]) + Size);
+                  Log('Updated resolution: ' + Resolution + ' with new size: ' + ResolutionSizes[AddedResolutions.IndexOf(Resolution)]);
+                end;
+              end
+              else
+                Break;
+            end;
+          end;
+          StartPos := J + 1;
+        end;
+      end
+      else
+        Break;
+    end;
+
+    // Store accumulated sizes
+    for I := 0 to AddedResolutions.Count - 1 do
+    begin
+      Sizes.Add(ResolutionSizes[I]);
+      Log('Final size for resolution ' + AddedResolutions[I] + ': ' + ResolutionSizes[I]);
+    end;
+
+    if ComboBox.Items.Count > 0 then
+    begin
+      ComboBox.ItemIndex := 0;
+      try
+        // Ensure that the initial size label is updated correctly
+        Log('Attempting to update initial size label for ' + Repo + ' with ComboBox.Tag: ' + IntToStr(ComboBox.Tag));
+        Log('Length of SizeLabelList: ' + IntToStr(Length(SizeLabelList)));
+        Log('Length of Sizes: ' + IntToStr(Sizes.Count));
+
+        if (ComboBox.Tag >= 0) and (ComboBox.Tag < Length(SizeLabelList)) then
+        begin
+          if Assigned(SizeLabelList[ComboBox.Tag]) then
+          begin
+            if (ComboBox.ItemIndex >= 0) and (ComboBox.ItemIndex < Sizes.Count) then
+            begin
+              SizeLabelList[ComboBox.Tag].Caption := 'Total Size: ' + IntToStr(StrToInt64Def(Sizes[ComboBox.ItemIndex], 0) div 1048576) + ' MB';
+              Log('Initial size for default selection: ' + SizeLabelList[ComboBox.Tag].Caption);
+            end
+            else
+            begin
+              Log('Invalid ComboBox.ItemIndex: ' + IntToStr(ComboBox.ItemIndex));
+            end;
+          end
+          else
+          begin
+            Log('SizeLabelList[' + IntToStr(ComboBox.Tag) + '] is not assigned (nil).');
+          end;
+        end
+        else
+        begin
+          Log('Invalid ComboBox.Tag value: ' + IntToStr(ComboBox.Tag));
+        end;
+      except
+        Log('Exception updating initial size label for ' + Repo + ': ' + GetExceptionMessage);
+      end;
+    end;
+  except
+    Log('Exception occurred while populating resolutions for ' + Repo + ': ' + GetExceptionMessage);
+  end;
+  AddedResolutions.Free;
+  ResolutionSizes.Free;
+end;
+
+procedure ComboBoxChange(Sender: TObject);
+// Handles changes in resolution selection.
+var
+  ComboBox: TComboBox;
+  Index: Integer;
+  SizeStr: string;
+  SizeInBytes: Int64;
+begin
+  ComboBox := TComboBox(Sender);
+  Index := ComboBox.Tag;
+  
+  Log('ComboBoxChange called for ComboBox with Tag: ' + IntToStr(Index));
+  Log('Length of SizeLabelList: ' + IntToStr(Length(SizeLabelList)));
+  Log('Length of SizesList: ' + IntToStr(Length(SizesList)));
+  if ComboBox.ItemIndex >= 0 then
+  begin
+    try
+      if (Index >= 0) and (Index < Length(SizesList)) then
+      begin
+        if (ComboBox.ItemIndex >= 0) and (ComboBox.ItemIndex < SizesList[Index].Count) then
+        begin
+          SizeInBytes := StrToInt64Def(SizesList[Index][ComboBox.ItemIndex], 0);
+          SizeStr := 'Total Size: ' + IntToStr(SizeInBytes div 1048576) + ' MB';
+          if (Index >= 0) and (Index < Length(SizeLabelList)) then
+          begin
+            SizeLabelList[Index].Caption := SizeStr;
+            Log('SizeLabel updated to: ' + SizeStr);
+          end
+          else
+          begin
+            Log('Invalid SizeLabelList index: ' + IntToStr(Index));
+          end;
+        end
+        else
+        begin
+          Log('Invalid ComboBox.ItemIndex: ' + IntToStr(ComboBox.ItemIndex));
+        end;
+      end
+      else
+      begin
+        Log('Invalid SizesList index: ' + IntToStr(Index));
+      end;
+    except
+      Log('Exception updating size label: ' + GetExceptionMessage);
+    end;
+  end;
+end;
+
+function CheckRP1Confirmation: Boolean;
+// Ensures the user has installed RP-1 before proceeding.
+begin
+  Log('Checking RP-1 confirmation and EVE/Scatterer download confirmation');
+  Result := True;
+  
+  if not RP1Checkbox.Checked then
+  begin
+    Log('RP-1 confirmation not checked');
+    MsgBox('Please confirm that you have installed and launched RP-1 at least once. RSS Reborn will not work if RP-1 does not work.', mbError, MB_OK);
+    Result := False; // Prevents proceeding to the next wizard page
+  end
+  else
+  begin
+    Log('RP-1 confirmation checked');
+  end;
+  
+  if EVEAndScattererCheckbox.Checked then
+  begin
+    Log('EVE and Scatterer download confirmation checked');
+    MsgBox('Please ensure that Blackrack''s Patreon EVE and Scatterer zip folders are in your downloads.', mbInformation, MB_OK);
+  end;
+end;
+
+procedure SetITDOptions;
+// Sets options for the InnoTools Downloader.
+begin
+  ITD_SetOption('ShowDetailsButton', 'false'); // Hide the Details button
+  ITD_SetOption('CustomUI', 'true'); // Enable custom UI settings if supported
+  // Additional customization options can be set here if needed
+end;
+
+procedure InitializeWizard;
+// Initializes the installation wizard, including UI elements and variables.
+// Sets up the installer’s user interface and prepares variables.
+var
+  i: Integer;
+  ComboBox: TComboBox;
+  BodyLabel, VersionLabel, SizeLabel: TLabel;
+  Page: TWizardPage;
+  PageHeight: Integer;
+begin
+  Log('Initializing wizard');
+
+  InitializeBodyRepos;
+  InitializeVariables;
+
+  RetrieveBodyInfo;
+
   DownloadsDir := ExpandConstant('{userdocs}\Downloads');
   Log('Downloads directory initialized: ' + DownloadsDir);
+
+  SetITDOptions;
+
+  RP1Checkbox := TNewCheckBox.Create(WizardForm);
+  RP1Checkbox.Parent := WizardForm.WelcomePage;
+  RP1Checkbox.Left := ScaleX(18);
+  RP1Checkbox.Top := ScaleY(150);
+  RP1Checkbox.Width := WizardForm.ClientWidth - ScaleX(36);
+  RP1Checkbox.Height := ScaleY(40);
+  RP1Checkbox.Caption := 'I confirm that I have successfully run RP-1 once.';
+  RP1Checkbox.Checked := False;
+  Log('RP-1 installation confirmation checkbox created');
+
+  EVEAndScattererCheckbox := TNewCheckBox.Create(WizardForm);
+  EVEAndScattererCheckbox.Parent := WizardForm.WelcomePage;
+  EVEAndScattererCheckbox.Left := ScaleX(18);
+  EVEAndScattererCheckbox.Top := ScaleY(200);
+  EVEAndScattererCheckbox.Width := WizardForm.ClientWidth - ScaleX(36);
+  EVEAndScattererCheckbox.Height := ScaleY(40);
+  EVEAndScattererCheckbox.Caption := '(Optional) I am using Blackrack''s EVE and Scatterer.';
+  EVEAndScattererCheckbox.Checked := False;
+  Log('EVE and Scatterer download confirmation checkbox created');
+
+  Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
+
+  WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(400);
+  WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(300);
+
+  SetLength(ResolutionCombos, Length(BodyRepos));
+  SetLength(AssetDataList, Length(BodyRepos));
+  SetLength(SizesList, Length(BodyRepos));
+  SetLength(SizeLabelList, Length(BodyRepos));
+
+  PageHeight := 10;
+
+  for i := 0 to High(BodyRepos) do
+  begin
+    BodyLabel := TLabel.Create(Page);
+    BodyLabel.Parent := Page.Surface;
+    BodyLabel.Left := ScaleX(8);
+    BodyLabel.Top := ScaleY(PageHeight);
+    BodyLabel.Caption := Copy(BodyRepos[i], 11, Length(BodyRepos[i]) - 10);
+
+    ComboBox := TComboBox.Create(Page);
+    ComboBox.Parent := Page.Surface;
+    ComboBox.Left := ScaleX(150);
+    ComboBox.Top := ScaleY(PageHeight);
+    ComboBox.Width := ScaleX(50);
+    ComboBox.OnChange := @ComboBoxChange;
+    ComboBox.Tag := i;
+    ResolutionCombos[i] := ComboBox;
+
+    AssetDataList[i] := TStringList.Create;
+    SizesList[i] := TStringList.Create;
+    PopulateResolutions(ComboBox, BodyRepos[i], SizesList[i]);
+
+    Log('Dropdown for ' + BodyRepos[i] + ' created');
+
+    VersionLabel := TLabel.Create(Page);
+    VersionLabel.Parent := Page.Surface;
+    VersionLabel.Left := ScaleX(320);
+    VersionLabel.Top := ScaleY(PageHeight);
+    if i < Length(BodyVersions) then
+      VersionLabel.Caption := 'Version: ' + BodyVersions[i];
+
+    SizeLabel := TLabel.Create(Page);
+    SizeLabel.Parent := Page.Surface;
+    SizeLabel.Left := ScaleX(420);
+    SizeLabel.Top := ScaleY(PageHeight);
+    if SizesList[i].Count > 0 then
+      SizeLabel.Caption := 'Total Size: ' + IntToStr(StrToIntDef(SizesList[i][0], 0) div 1048576) + ' MB'
+    else
+      SizeLabel.Caption := 'Total Size: Unknown';
+    SizeLabelList[i] := SizeLabel;
+
+    Log('Size label for ' + BodyRepos[i] + ' initialized: ' + SizeLabel.Caption);
+
+    PageHeight := PageHeight + 25;
+  end;
+
+  try
+    ITD_Internal_InitUI(WizardForm.Handle);
+    Log('ITD_Internal_InitUI successful');
+  except
+    Log('ITD_Internal_InitUI failed: ' + GetExceptionMessage);
+    Exit;
+  end;
+
+  WizardForm.Repaint;
+  Page.Surface.Repaint;
+
+  Log('Wizard initialization completed');
+end;
+
+procedure MoveDownloadedEVEAndScatterer;
+// If user has paid for Volumentric Clouds, installer takes the zips from the downloads folder
+begin
+  try
+    Log('Moving downloaded EVE and Scatterer files');
+
+    if FileExists(DownloadsDir + '\EnvironmentalVisualEnhancements.zip') then
+    begin
+      Log('Extracting EnvironmentalVisualEnhancements.zip');
+      Extract7Zip(DownloadsDir + '\EnvironmentalVisualEnhancements.zip', KSP_DIR);
+    end
+    else
+    begin
+      Log('EnvironmentalVisualEnhancements.zip not found');
+    end;
+
+    if FileExists(DownloadsDir + '\Scatterer.zip') then
+    begin
+      Log('Extracting Scatterer.zip');
+      Extract7Zip(DownloadsDir + '\Scatterer.zip', KSP_DIR);
+    end
+    else
+    begin
+      Log('Scatterer.zip not found');
+    end;
+
+    Log('Extraction completed');
+  except
+    Log('Failed to move downloaded EVE and Scatterer files. Exception: ' + GetExceptionMessage, mbError, MB_OK);
+  end;
 end;
 
 procedure AddToDownloadList(RepoName, Resolution, TempFileName: string);
+// Adds URLs to the download list based on selected resolutions.
 var
-  LatestReleaseURLs: string;
   URL: string;
-  URLList: TStringList;
-  I: Integer;
+  AssetName, BrowserDownloadURL: string;
+  I, J, StartPos: Integer;
 begin
-  URLList := TStringList.Create;
-  try
-    LatestReleaseURLs := GetLatestReleaseAssets(RepoName, Resolution);
-    
-    // Split the returned URLs string into the TStringList
-    URLList.Text := LatestReleaseURLs;
-    
-    if URLList.Count > 0 then
+  GetLatestReleaseHTTPInfo(RepoName);
+
+  StartPos := 1;
+  while StartPos > 0 do
+  begin
+    I := PosEx('"name":"', LatestReleaseAssetsJSON, StartPos);
+    if I > 0 then
     begin
-      for I := 0 to URLList.Count - 1 do
+      I := I + Length('"name":"');
+      J := FindNextQuote(LatestReleaseAssetsJSON, I);
+      if J > 0 then
       begin
-        URL := URLList[I];
-        DownloadList.Add(URL + '=' + TempFileName);
+        AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
+        if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
+        begin
+          I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
+          if I > 0 then
+          begin
+            I := I + Length('"browser_download_url":"');
+            J := FindNextQuote(LatestReleaseAssetsJSON, I);
+            if J > 0 then
+            begin
+              BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
+              DownloadList.Add(BrowserDownloadURL + '=' + TempFileName);
+            end;
+          end;
+        end;
+        StartPos := J + 1;
       end;
-    end;
-  finally
-    URLList.Free;
+    end
+    else
+      Break;
   end;
 end;
 
 function GetRepoDownloadURL(Repo, Resolution: string): string;
+// Retrieves the download URL for a specific repository and resolution.
 var
-  URLs: TStringList;
+  AssetName, BrowserDownloadURL: string;
+  I, J, StartPos: Integer;
 begin
-  URLs := TStringList.Create;
-  try
-    URLs.Text := GetLatestReleaseAssets(Repo, Resolution);
-    if URLs.Count > 0 then
-      Result := URLs.Text
+  GetLatestReleaseHTTPInfo(Repo);
+  Result := '';
+
+  StartPos := 1;
+  while StartPos > 0 do
+  begin
+    I := PosEx('"name":"', LatestReleaseAssetsJSON, StartPos);
+    if I > 0 then
+    begin
+      I := I + Length('"name":"');
+      J := FindNextQuote(LatestReleaseAssetsJSON, I);
+      if J > 0 then
+      begin
+        AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
+        if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
+        begin
+          I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
+          if I > 0 then
+          begin
+            I := I + Length('"browser_download_url":"');
+            J := FindNextQuote(LatestReleaseAssetsJSON, I);
+            if J > 0 then
+            begin
+              BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
+              Result := BrowserDownloadURL;
+              Exit;
+            end;
+          end;
+        end;
+        StartPos := J + 1;
+      end;
+    end
     else
-      Result := '';
-  finally
-    URLs.Free;
+      Break;
   end;
 end;
 
 procedure InitializeDownloadList;
-// Includes everything required for RSS Reborn
+// Initializes the list of files to be downloaded.
 var
   LatestVersion: string;
   ParallaxURL, ParallaxScatterTexturesURL: string;
   LatestReleaseURL: string;
 begin
+  Log('Initializing download list');
   ITD_ClearFiles;
 
   // RSS-Configs
@@ -919,6 +1186,8 @@ begin
 end;
 
 procedure DownloadAndExtractFiles;
+// Downloads and extracts the files listed in the download list.
+// Ensures all required files are available and extracted.
 var
   I: Integer;
   ResultStr: String;
@@ -945,7 +1214,6 @@ begin
       else
       begin
         Log('Failed to extract ' + DownloadList[I]);
-        MsgBox('Failed to extract ' + DownloadList[I] + '.', mbError, MB_OK);
       end;
     end;
     Log('All files extracted successfully.');
@@ -953,12 +1221,11 @@ begin
   else
   begin
     Log('Failed to download assets. Error: ' + ResultStr);
-    MsgBox('Failed to download assets. Error: ' + ResultStr, mbError, MB_OK);
   end;
 end;
 
 procedure InitializeAndDownload;
-// Simple procedure to run init and download one after another
+// Runs initialization and download procedures in sequence.
 begin
   InitializeDownloadList;
   DownloadAndExtractFiles;
@@ -968,7 +1235,7 @@ begin
 end;
 
 procedure VerifyDownloadAndExtraction;
-// Essential to check that downloads and extractions were successful
+// Verifies that all files have been downloaded and extracted successfully.
 var
   I: Integer;
   Entry, URL, TempFile: string;
@@ -993,7 +1260,6 @@ begin
     else
     begin
       Log('Invalid entry in DownloadList: ' + Entry);
-      MsgBox('Invalid entry in DownloadList: ' + Entry, mbError, MB_OK);
       Exit; // Exit procedure early if any entry is invalid
     end;
 
@@ -1004,7 +1270,6 @@ begin
     if not FileExists(TempFile) then
     begin
       Log('Error: File not found after extraction: ' + TempFile);
-      MsgBox('Error: File not found after extraction: ' + TempFile, mbError, MB_OK);
       Exit; // Exit procedure early if any file is missing
     end;
   end;
@@ -1013,7 +1278,7 @@ begin
 end;
 
 procedure MoveGameData(SourceDir, DestDir: string);
-// All extracted folders need to be merged and moved together
+// Moves game data files from the temporary directory to the game directory.
 var
   ResultCode: Integer;
 begin
@@ -1026,6 +1291,8 @@ begin
       Exit;
     end;
   end;
+	
+	Log(Format('Moving game data from %s to %s', [SourceDir, DestDir]));
 
   // Move all files and directories from SourceDir to DestDir
   if not Exec('cmd.exe', '/C move "' + SourceDir + '\*" "' + DestDir + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
@@ -1039,11 +1306,14 @@ begin
 end;
 
 procedure MergeGameDataFolders;
-// All extracted folders need to be merged and moved together
+// Merges multiple game data folders into one.
 var
   I: Integer;
   SourceDir, DestDir: string;
 begin
+
+  Log('Merging GameData folders');
+	
   DestDir := ExpandConstant('{userdesktop}\MergedGameData');
   
   for I := 0 to DownloadList.Count - 1 do
@@ -1061,29 +1331,37 @@ begin
 end;
 
 procedure CleanupTemporaryFiles;
+// Deletes temporary files created during the installation process.
+// Keeps the system clean and frees up disk space.
 var
   TempDir: string;
 begin
   TempDir := ExpandConstant('{tmp}');
+  Log('Cleaning up temporary files in ' + TempDir);  // Add more descriptive logging
   if DirExists(TempDir) then
   begin
-    Log('Cleaning up temporary files...');
     if not DelTree(TempDir, True, True, True) then
       Log('Failed to clean up temporary files in ' + TempDir)
     else
       Log('Temporary files cleaned up successfully.');
-  end;
+  end
+  else
+    Log('No temporary files found to clean up in ' + TempDir);
 end;
 
-procedure DeinitializeSetup();
+procedure DeinitializeSetup;
+// Cleans up resources and temporary files after installation.
 begin
-  Log('Deinitializing Setup.');
-  CleanupTemporaryFiles; // Clean up temporary files
-  DeinitializeVariables; // Free allocated resources
+  Log('Deinitializing setup and cleaning up resources');  // Ensure complete logging
+  CleanupTemporaryFiles;
+  DeinitializeVariables;
 end;
 
 procedure RemoveObsoleteFolders;
+// Deletes old or obsolete directories from the game installation.
+// Prevents conflicts and ensures only relevant files remain.
 begin
+  Log('Removing obsolete folders');
   if DirectoryExists(KSP_DIR + '\Kopernicus') then
     if not DelTree(KSP_DIR + '\Kopernicus', True, True, True) then
       Log('Failed to delete Kopernicus directory.')
@@ -1136,15 +1414,17 @@ begin
 end;
 
 procedure DownloadParallaxTextures;
+// Downloads specific textures for the Parallax mod.
 var
   LatestVersion: string;
   ParallaxURL, ParallaxScatterTexturesURL: string;
 begin
+  Log('Downloading Parallax textures(procedure)');
   LatestVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
   if LatestVersion = '' then
   begin
     Log('Failed to retrieve the latest release version.');
-    MsgBox('Failed to retrieve the latest release version.', mbError, MB_OK);
+    //MsgBox('Failed to retrieve the latest release version.', mbError, MB_OK);
     Exit;
   end;
 
@@ -1160,8 +1440,15 @@ begin
   ITD_DownloadAfter(wpReady);
 end;
 
+procedure InitializeDownloadsDir;
+// Sets the directory for downloading files.
+begin
+  DownloadsDir := ExpandConstant('{userdocs}\Desktop');
+  Log('Downloads directory initialized: ' + DownloadsDir);
+end;
+
 procedure StartInstallation;
-// This procedure handles the initialization and downloading steps
+// Manages the entire installation process.
 begin
   Log('Starting RSS Reborn installation process.');
 
@@ -1190,15 +1477,15 @@ begin
   // Merge the GameData folders
   MergeGameDataFolders;
   Log('GameData folders merged successfully.');
-  MsgBox('GameData folders merged successfully!', mbInformation, MB_OK);
-
-  Log('RSS Reborn installation process completed successfully.');
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
+// Handles the actions to perform when the Next button is clicked.
+// Guides the installation flow based on user input.
 var
   i: Integer;
 begin
+  Log('Next button clicked, CurPageID: ' + IntToStr(CurPageID));
   Result := True; // Allow navigation by default
 
   // Validate RP-1 checkbox before proceeding from the welcome page
@@ -1211,17 +1498,6 @@ begin
     end
     else
     begin
-      // Ensure user selects resolutions for all required pages
-      for i := 0 to High(ResolutionCombos) do
-      begin
-        if ResolutionCombos[i].ItemIndex = -1 then
-        begin
-          MsgBox('Please select a resolution for ' + Copy(BodyRepos[i], 11, Length(BodyRepos[i]) - 10) + '.', mbError, MB_OK);
-          Result := False; // Prevent navigation if any resolution is not selected
-          Exit;
-        end;
-      end;
-
       // Initialize GitHub API after all validations
       InitializeGitHubAPI;
     end;
@@ -1234,17 +1510,25 @@ begin
   end;
 end;
 	
-procedure CurStepChanged(CurStep: TSetupStep);
+procedure CurPageChanged(CurPageID: Integer);
+// Logs and manages actions when the current page of the wizard changes.
+// Prepares the installer for subsequent steps.
 begin
+  Log('Current page changed, CurPageID: ' + IntToStr(CurPageID));
+  if CurPageID = wpReady then
+  begin
+    Log('Preparing to start the installation process.');
+    // Additional logic to prepare the installation, if any, can be added here
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+// Manages transitions between installation steps.
+begin
+  Log('Current step changed, CurStep: ' + IntToStr(Ord(CurStep)));
   if CurStep = ssInstall then
   begin
-    // Show final confirmation page
-    if MsgBox('RSS Reborn has been installed successfully! Would you like to close the installer now?', mbConfirmation, MB_YESNO) = IDYES then
-    begin
-      DeinitializeSetup;
-      WizardForm.Close;
-    end;
-
-    MsgBox('Thank you for installing RSS Reborn!', mbInformation, MB_OK);
-  end;
+    Log('Starting the installation process.');
+    StartInstallation;
+  end
 end;
