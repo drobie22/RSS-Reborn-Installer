@@ -2,7 +2,7 @@
 ; David Robie (DRobie22)
 ; This installer follows RSS Reborn's GitHub Instructions
 
-#define MyAppName "RSS-Reborn"
+#define MyAppName "RSS Reborn Installer"
 #define MyAppVersion "0.5"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "https://github.com/RSS-Reborn/RSS-Reborn"
@@ -33,7 +33,7 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel2=This will install [name/ver] on your computer.%n%nMod created and maintained by ballisticfox, Techo, and VaNnadin.%nInstaller created by DRobie22.
+WelcomeLabel2=This will install RSS Reborn into your default KSP directory.%n%nMod created and maintained by Ballisticfox, Techo, and VaNnadin.%n[name/ver] created by DRobie22.
 
 [Files]
 Source: "C:\Program Files\7-Zip\7z.exe"; DestDir: "{tmp}"; Flags: dontcopy
