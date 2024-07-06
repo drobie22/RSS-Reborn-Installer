@@ -76,6 +76,8 @@ var
   SizesList: array of TStringList;
 	SizeLabelList: array of TLabel;
   ScattererDownloaded: Boolean;
+  wpSelectResolutions: Integer;
+
 	
 type
   TResolutionPages = array of TWizardPage;
@@ -242,23 +244,42 @@ begin
     Result := Result + Offset - 1;
 end;
 
+function ExtractBodyName(Repo: string): string;
+// Helper Function
+var
+  LastSlashPos: Integer;
+  BodyName: string;
+begin
+  LastSlashPos := LastDelimiter('/', Repo);
+  if LastSlashPos > 0 then
+    BodyName := Copy(Repo, LastSlashPos + 1, Length(Repo) - LastSlashPos)
+  else
+    BodyName := Repo;  // Fallback in case there is no slash
+  
+  // Remove the 'RSS-' prefix if it exists
+  if Pos('RSS-', BodyName) = 1 then
+    Delete(BodyName, 1, Length('RSS-'));
+  
+  Result := BodyName;
+end;
+
 procedure InitializeBodyRepos;
 // Initializes the array with GitHub repositories for planetary bodies.
 // Provides the list of repositories to fetch assets from.
 begin
   Log('Initializing BodyRepos array');
-  BodyRepos[11] := 'RSS-Reborn/RSS-Sol';
-  BodyRepos[10] := 'RSS-Reborn/RSS-Mercury';
-  BodyRepos[9] := 'RSS-Reborn/RSS-Venus';
-  BodyRepos[8] := 'RSS-Reborn/RSS-Earth';
-  BodyRepos[7] := 'RSS-Reborn/RSS-Luna';
-  BodyRepos[6] := 'RSS-Reborn/RSS-Mars';
-  BodyRepos[5] := 'RSS-Reborn/RSS-Jupiter';
-  BodyRepos[4] := 'RSS-Reborn/RSS-Saturn';
-  BodyRepos[3] := 'RSS-Reborn/RSS-Uranus';
-  BodyRepos[2] := 'RSS-Reborn/RSS-Neptune';
-  BodyRepos[1] := 'RSS-Reborn/RSS-AsteroidBelt';
-  BodyRepos[0] := 'RSS-Reborn/RSS-KuiperBelt';
+  BodyRepos[0] := 'RSS-Reborn/RSS-Sol';
+  BodyRepos[1] := 'RSS-Reborn/RSS-Mercury';
+  BodyRepos[2] := 'RSS-Reborn/RSS-Venus';
+  BodyRepos[3] := 'RSS-Reborn/RSS-Earth';
+  BodyRepos[4] := 'RSS-Reborn/RSS-Luna';
+  BodyRepos[5] := 'RSS-Reborn/RSS-Mars';
+  BodyRepos[6] := 'RSS-Reborn/RSS-Jupiter';
+  BodyRepos[7] := 'RSS-Reborn/RSS-Saturn';
+  BodyRepos[8] := 'RSS-Reborn/RSS-Uranus';
+  BodyRepos[9] := 'RSS-Reborn/RSS-Neptune';
+  BodyRepos[10] := 'RSS-Reborn/RSS-AsteroidBelt';
+  BodyRepos[11] := 'RSS-Reborn/RSS-KuiperBelt';
   Log('BodyRepos array initialized');
 end;
 
@@ -650,19 +671,15 @@ begin
 end;
 
 procedure PopulateResolutions(ComboBox: TComboBox; Repo: string; var Sizes: TStringList);
-// Populates the resolution dropdowns for each body.
 var
-  i: Integer;
-  Body: String;
-  AssetSize: Int64;
+  I, J, StartPos: Integer;
   AssetName, Resolution: string;
-  J, StartPos, Size: Int64;
-  AddedResolutions, ResolutionSizes: TStringList;
+  Size, TotalSize: Int64;
+  AddedResolutions: TStringList;
 begin
   InitializeArrayLengths;
-
+  
   AddedResolutions := TStringList.Create;
-  ResolutionSizes := TStringList.Create;
   try
     Log('Populating resolutions for ' + Repo);
     ComboBox.Items.Clear;
@@ -693,43 +710,21 @@ begin
             Size := StrToInt64Def(Copy(LatestReleaseAssetsJSON, I, StartPos - I), 0);
             Log('Size for asset ' + AssetName + ': ' + IntToStr(Size));
 
-            // Accumulate sizes for each resolution, including multi-part files
             if Resolution <> '' then
             begin
               if AddedResolutions.IndexOf(Resolution) = -1 then
               begin
                 ComboBox.Items.Add(Resolution);
                 AddedResolutions.Add(Resolution);
-                ResolutionSizes.Add(IntToStr(Size));
+                Sizes.Add(IntToStr(Size));
                 Log('Added resolution: ' + Resolution + ' with size: ' + IntToStr(Size));
               end
               else
               begin
-                ResolutionSizes[AddedResolutions.IndexOf(Resolution)] :=
-                  IntToStr(StrToInt64(ResolutionSizes[AddedResolutions.IndexOf(Resolution)]) + Size);
-                Log('Updated resolution: ' + Resolution + ' with new size: ' + ResolutionSizes[AddedResolutions.IndexOf(Resolution)]);
+                TotalSize := StrToInt64(Sizes[AddedResolutions.IndexOf(Resolution)]) + Size;
+                Sizes[AddedResolutions.IndexOf(Resolution)] := IntToStr(TotalSize);
+                Log('Updated resolution: ' + Resolution + ' with new size: ' + IntToStr(TotalSize));
               end;
-            end;
-
-            // Check for multi-part files and accumulate their sizes
-            while PosEx('.00', AssetName, 1) > 0 do
-            begin
-              I := PosEx('"size":', LatestReleaseAssetsJSON, StartPos + 1);
-              if I > 0 then
-              begin
-                I := I + Length('"size":');
-                StartPos := PosEx(',', LatestReleaseAssetsJSON, I);
-                Size := StrToInt64Def(Copy(LatestReleaseAssetsJSON, I, StartPos - I), 0);
-                Log('Found multi-part file with size: ' + IntToStr(Size));
-                if AddedResolutions.IndexOf(Resolution) <> -1 then
-                begin
-                  ResolutionSizes[AddedResolutions.IndexOf(Resolution)] :=
-                    IntToStr(StrToInt64(ResolutionSizes[AddedResolutions.IndexOf(Resolution)]) + Size);
-                  Log('Updated resolution: ' + Resolution + ' with new size: ' + ResolutionSizes[AddedResolutions.IndexOf(Resolution)]);
-                end;
-              end
-              else
-                Break;
             end;
           end;
           StartPos := J + 1;
@@ -739,58 +734,17 @@ begin
         Break;
     end;
 
-    // Store accumulated sizes
-    for I := 0 to AddedResolutions.Count - 1 do
-    begin
-      Sizes.Add(ResolutionSizes[I]);
-      Log('Final size for resolution ' + AddedResolutions[I] + ': ' + ResolutionSizes[I]);
-    end;
-
     if ComboBox.Items.Count > 0 then
     begin
       ComboBox.ItemIndex := 0;
-      try
-        // Ensure that the initial size label is updated correctly
-        Log('Attempting to update initial size label for ' + Repo + ' with ComboBox.Tag: ' + IntToStr(ComboBox.Tag));
-        Log('Length of SizeLabelList: ' + IntToStr(Length(SizeLabelList)));
-        Log('Length of Sizes: ' + IntToStr(Sizes.Count));
-
-        if (ComboBox.Tag >= 0) and (ComboBox.Tag < Length(SizeLabelList)) then
-        begin
-          if Assigned(SizeLabelList[ComboBox.Tag]) then
-          begin
-            if (ComboBox.ItemIndex >= 0) and (ComboBox.ItemIndex < Sizes.Count) then
-            begin
-              SizeLabelList[ComboBox.Tag].Caption := 'Total Size: ' + IntToStr(StrToInt64Def(Sizes[ComboBox.ItemIndex], 0) div 1048576) + ' MB';
-              Log('Initial size for default selection: ' + SizeLabelList[ComboBox.Tag].Caption);
-            end
-            else
-            begin
-              Log('Invalid ComboBox.ItemIndex: ' + IntToStr(ComboBox.ItemIndex));
-            end;
-          end
-          else
-          begin
-            Log('SizeLabelList[' + IntToStr(ComboBox.Tag) + '] is not assigned (nil).');
-          end;
-        end
-        else
-        begin
-          Log('Invalid ComboBox.Tag value: ' + IntToStr(ComboBox.Tag));
-        end;
-      except
-        Log('Exception updating initial size label for ' + Repo + ': ' + GetExceptionMessage);
-      end;
+      UpdateSizeLabel(ComboBox.Tag);
     end;
-  except
-    Log('Exception occurred while populating resolutions for ' + Repo + ': ' + GetExceptionMessage);
+  finally
+    AddedResolutions.Free;
   end;
-  AddedResolutions.Free;
-  ResolutionSizes.Free;
 end;
 
 procedure ComboBoxChange(Sender: TObject);
-// Handles changes in resolution selection.
 var
   ComboBox: TComboBox;
   Index: Integer;
@@ -864,9 +818,13 @@ end;
 procedure SetITDOptions;
 // Sets options for the InnoTools Downloader.
 begin
-  ITD_SetOption('ShowDetailsButton', 'false'); // Hide the Details button
-  ITD_SetOption('CustomUI', 'true'); // Enable custom UI settings if supported
-  // Additional customization options can be set here if needed
+	ITD_SetOption('ShowDetailsButton', 'false'); // Hide the Details button
+	ITD_SetOption('UI_DetailedMode', '0'); // Ensure detailed mode is off by default
+	ITD_SetOption('UI_AllowContinue', '1'); // Allow continuation if a download fails
+	ITD_SetOption('Debug_Messages', '1'); // Enable detailed error messages for debugging
+	ITD_SetOption('Debug_DownloadDelay', '0'); // No download delay
+	ITD_SetOption('UI_Caption', 'Downloading Files...');
+  ITD_SetOption('UI_Description', 'Please wait while the required files are being downloaded.');
 end;
 
 procedure InitializeWizard;
@@ -886,7 +844,7 @@ begin
 
   RetrieveBodyInfo;
 
-  DownloadsDir := ExpandConstant('{userdocs}\Downloads');
+  DownloadsDir := ExpandConstant('{userdocs}\Desktop');
   Log('Downloads directory initialized: ' + DownloadsDir);
 
   SetITDOptions;
@@ -894,7 +852,7 @@ begin
   RP1Checkbox := TNewCheckBox.Create(WizardForm);
   RP1Checkbox.Parent := WizardForm.WelcomePage;
   RP1Checkbox.Left := ScaleX(18);
-  RP1Checkbox.Top := ScaleY(150);
+  RP1Checkbox.Top := ScaleY(175);
   RP1Checkbox.Width := WizardForm.ClientWidth - ScaleX(36);
   RP1Checkbox.Height := ScaleY(40);
   RP1Checkbox.Caption := 'I confirm that I have successfully run RP-1 once.';
@@ -904,7 +862,7 @@ begin
   EVEAndScattererCheckbox := TNewCheckBox.Create(WizardForm);
   EVEAndScattererCheckbox.Parent := WizardForm.WelcomePage;
   EVEAndScattererCheckbox.Left := ScaleX(18);
-  EVEAndScattererCheckbox.Top := ScaleY(200);
+  EVEAndScattererCheckbox.Top := ScaleY(215);
   EVEAndScattererCheckbox.Width := WizardForm.ClientWidth - ScaleX(36);
   EVEAndScattererCheckbox.Height := ScaleY(40);
   EVEAndScattererCheckbox.Caption := '(Optional) I am using Blackrack''s EVE and Scatterer.';
@@ -912,16 +870,17 @@ begin
   Log('EVE and Scatterer download confirmation checkbox created');
 
   Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
+  wpSelectResolutions := Page.ID;
 
-  WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(400);
-  WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(300);
+  WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(0);
+  WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(0);
 
   SetLength(ResolutionCombos, Length(BodyRepos));
   SetLength(AssetDataList, Length(BodyRepos));
   SetLength(SizesList, Length(BodyRepos));
   SetLength(SizeLabelList, Length(BodyRepos));
 
-  PageHeight := 10;
+  PageHeight := 0;
 
   for i := 0 to High(BodyRepos) do
   begin
@@ -929,7 +888,7 @@ begin
     BodyLabel.Parent := Page.Surface;
     BodyLabel.Left := ScaleX(8);
     BodyLabel.Top := ScaleY(PageHeight);
-    BodyLabel.Caption := Copy(BodyRepos[i], 11, Length(BodyRepos[i]) - 10);
+    BodyLabel.Caption := ExtractBodyName(BodyRepos[i]);
 
     ComboBox := TComboBox.Create(Page);
     ComboBox.Parent := Page.Surface;
@@ -948,7 +907,7 @@ begin
 
     VersionLabel := TLabel.Create(Page);
     VersionLabel.Parent := Page.Surface;
-    VersionLabel.Left := ScaleX(320);
+    VersionLabel.Left := ScaleX(275);
     VersionLabel.Top := ScaleY(PageHeight);
     if i < Length(BodyVersions) then
       VersionLabel.Caption := 'Version: ' + BodyVersions[i];
@@ -969,10 +928,11 @@ begin
   end;
 
   try
-    ITD_Internal_InitUI(WizardForm.Handle);
-    Log('ITD_Internal_InitUI successful');
+    Log('Calling ITD_Init');
+    ITD_Init;
+    Log('ITD_Init successful');
   except
-    Log('ITD_Internal_InitUI failed: ' + GetExceptionMessage);
+    Log('ITD_Init failed: ' + GetExceptionMessage);
     Exit;
   end;
 
@@ -1482,10 +1442,6 @@ begin
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
-// Handles the actions to perform when the Next button is clicked.
-// Guides the installation flow based on user input.
-var
-  i: Integer;
 begin
   Log('Next button clicked, CurPageID: ' + IntToStr(CurPageID));
   Result := True; // Allow navigation by default
@@ -1505,7 +1461,14 @@ begin
     end;
   end;
 
-  // If user is on the resolutions page, start the installation process
+  // Ensure installation starts after the user has made their resolution selections
+  if (CurPageID = wpSelectResolutions) then
+  begin
+    Log('User has selected resolutions, preparing for installation.');
+    // Any additional validation or preparation based on the selected resolutions
+  end;
+
+  // Start the installation process after the resolutions page (typically wpReady)
   if (CurPageID = wpReady) then
   begin
     StartInstallation;
