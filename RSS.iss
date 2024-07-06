@@ -86,10 +86,12 @@ type
 procedure InitializeVariables;
 // Initializes global variables to their default states.
 begin
+  Log('Initializing variables...');
   EVEDownloaded := False;
   ScattererDownloaded := False;
   DownloadList := TStringList.Create;
   UserCanceled := False;
+  Log('Variables initialized.');
 end;
 
 procedure InitializeArrayLengths;
@@ -1038,12 +1040,18 @@ begin
 end;
 
 procedure AddToDownloadList(RepoName, Resolution, TempFileName: string);
-// Adds URLs to the download list based on selected resolutions.
 var
   AssetName, BrowserDownloadURL: string;
   I, J, StartPos: Integer;
 begin
   GetLatestReleaseHTTPInfo(RepoName);
+
+  // Skip if the latest release assets JSON is empty
+  if LatestReleaseAssetsJSON = '' then
+  begin
+    Log('Skipping download for ' + RepoName + ' as no assets found in the latest release.');
+    Exit;
+  end;
 
   StartPos := 1;
   while StartPos > 0 do
@@ -1332,21 +1340,34 @@ begin
 end;
 
 procedure MergeGameDataFolders;
-// Merges multiple game data folders into one.
 var
   I: Integer;
   SourceDir, DestDir: string;
 begin
+  Log('Starting MergeGameDataFolders');
+  if DownloadList = nil then
+  begin
+    Log('Error: DownloadList is not initialized.');
+    Exit;
+  end;
+
+  Log('DownloadList.Count: ' + IntToStr(DownloadList.Count));
+  if DownloadList.Count = 0 then
+  begin
+    Log('Warning: DownloadList is empty. Nothing to merge.');
+    Exit;
+  end;
 
   Log('Merging GameData folders');
-	
   DestDir := ExpandConstant('{userdesktop}\MergedGameData');
   
   for I := 0 to DownloadList.Count - 1 do
   begin
     SourceDir := ExpandConstant('{tmp}') + '\' + ExtractFileNameWithoutExt(DownloadList[I]) + '\GameData';
+    Log('Checking if directory exists: ' + SourceDir);
     if DirExists(SourceDir) then
     begin
+      Log('Directory exists: ' + SourceDir + '. Moving to ' + DestDir);
       MoveGameData(SourceDir, DestDir);
     end
     else
@@ -1354,6 +1375,7 @@ begin
       Log(Format('GameData folder not found in %s', [SourceDir]));
     end;
   end;
+  Log('Completed MergeGameDataFolders');
 end;
 
 procedure CleanupTemporaryFiles;
@@ -1439,6 +1461,18 @@ begin
   Log('Folders removal completed.');
 end;
 
+procedure LogDownloadList;
+// Logs the contents of the DownloadList to the log file.
+var
+  I: Integer;
+begin
+  Log('DownloadList Contents:');
+  for I := 0 to DownloadList.Count - 1 do
+  begin
+    Log('Download item ' + IntToStr(I) + ': ' + DownloadList[I]);
+  end;
+end;
+
 procedure InitializeDownloadsDir;
 // Sets the directory for downloading files.
 begin
@@ -1469,7 +1503,8 @@ begin
 
   // Initialize and start downloading
   Log('Starting download process.');
-  InitializeAndDownload
+	LogDownloadList; 
+  InitializeAndDownload;
   Log('Finished downloading.');
 
   // Merge the GameData folders
