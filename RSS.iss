@@ -70,7 +70,6 @@ var
 	MyAccessToken: string;
   Resolution: string;
   ResolutionCombos: array of TComboBox;
-	ResolutionPages: array of TWizardPage;
   RP1Checkbox: TNewCheckBox;
 	Sizes: array of Int64;
   SizesList: array of TStringList;
@@ -115,19 +114,6 @@ procedure LogSizeError(Body: String; Size: Int64);
 // Logs an error message for file size overflow.
 begin
   Log(Format('Overflow detected for %s with size: %d', [Body, Size]));
-end;
-	
-procedure InitializeGitHubAPI;
-// Retrieves GitHub access token from environment variable. 
-// Allows authenticated requests to GitHub API.
-begin
-  MyAccessToken := GetEnv('MY_ACCESS_TOKEN'); // Get token from environment variable
-  if MyAccessToken = '' then
-  begin
-    Log('GitHub Access Token is not set.');
-    Exit;
-  end;
-  Log('GitHub Access Token retrieved: ' + MyAccessToken); // Log token retrieval for debugging purposes
 end;
 
 function SendMessage(hWnd: LongInt; Msg: LongInt; wParam: LongInt; lParam: LongInt): LongInt;
@@ -352,11 +338,9 @@ begin
 end;
 
 procedure GetLatestReleaseHTTPInfo(Repo: string);
-// Fetches the latest release information from GitHub.
 var
   HttpCli: Variant;
   I, J: Integer;
-  AccessToken: string;
   AssetsURL: string;
 begin
   Log('Fetching latest release info for ' + Repo);
@@ -365,12 +349,11 @@ begin
   LatestReleaseVersion := '';
 
   try
-    AccessToken := GetEnv('MY_ACCESS_TOKEN');
     HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
     HttpCli.Open('GET', GitHubAPI + Repo + '/releases/latest', False);
     HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
-    if AccessToken <> '' then
-      HttpCli.SetRequestHeader('Authorization', 'token ' + AccessToken);
+    if MyAccessToken <> '' then
+      HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
 
     HttpCli.Send;
 
@@ -401,8 +384,9 @@ begin
         begin
           AssetsURL := Copy(LatestReleaseJSON, I, J - I);
           HttpCli.Open('GET', AssetsURL, False);
-          if AccessToken <> '' then
-            HttpCli.SetRequestHeader('Authorization', 'token ' + AccessToken);
+          HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
+          if MyAccessToken <> '' then
+            HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
 
           HttpCli.Send;
           if HttpCli.Status = 200 then
@@ -419,8 +403,23 @@ begin
     else
     begin
       Log('Failed to fetch latest release info, status: ' + IntToStr(HttpCli.Status));
+      if HttpCli.Status = 403 then
+      begin
+        Log('HTTP 403 Forbidden error. Possible rate limit exceeded.');
+        if MsgBox('GitHub download rate limit exceeded. Please wait a moment before retrying. Click OK to retry now.', mbInformation, MB_OK) = IDOK then
+        begin
+          Log('User acknowledged rate limit message. Retrying...');
+          GetLatestReleaseHTTPInfo(Repo); // Retry fetching release info
+        end
+        else
+        begin
+          Log('User canceled retry. Exiting.');
+          Exit;
+        end;
+      end;
     end;
   except
+    Log('Exception occurred while fetching latest release info: ' + GetExceptionMessage);
   end;
 end;
 
@@ -553,18 +552,10 @@ begin
   try
     HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
     HttpCli.Open('GET', GitHubAPI + Repo + '/releases/latest', False);
-    HttpCli.SetRequestHeader('User-Agent', 'InnoSetup');
-    if MyAccessToken <> '' then
-    begin
-      HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken); // Add authorization header
-      Log('Authorization header set with token.');
-    end
-    else
-    begin
-      Log('GitHub Access Token is empty.');
-    end;
+    HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
+
     HttpCli.Send;
-    
+
     if HttpCli.Status = 200 then
     begin
       Log('Request successful, status: ' + IntToStr(HttpCli.Status));
@@ -590,20 +581,23 @@ begin
 end;
 
 procedure RetrieveBodyInfo;
-// Retrieves version and size information for each body repository.
 var
-  i: Integer;
-  Size: string;
+  I: Integer;
 begin
   Log('Retrieving body info');
   SetLength(BodyVersions, Length(BodyRepos));
   SetLength(BodySizes, Length(BodyRepos));
+  SetLength(AssetDataList, Length(BodyRepos));
 
-  for i := 0 to High(BodyRepos) do
+  for I := 0 to High(BodyRepos) do
   begin
-    GetLatestReleaseHTTPInfo(BodyRepos[i]);
-    BodyVersions[i] := LatestReleaseVersion;
-    BodySizes[i] := GetFileSizeForLatestReleaseFromAssets(LatestReleaseAssetsJSON);
+    GetLatestReleaseHTTPInfo(BodyRepos[I]);
+    BodyVersions[I] := LatestReleaseVersion;
+    BodySizes[I] := GetFileSizeForLatestReleaseFromAssets(LatestReleaseAssetsJSON);
+
+    // Store the assets JSON data in the AssetDataList array
+    AssetDataList[I] := TStringList.Create;
+    AssetDataList[I].Text := LatestReleaseAssetsJSON;
   end;
 end;
 
@@ -670,7 +664,7 @@ begin
   end;
 end;
 
-procedure PopulateResolutions(ComboBox: TComboBox; Repo: string; var Sizes: TStringList);
+procedure PopulateResolutions(ComboBox: TComboBox; RepoIndex: Integer; var Sizes: TStringList);
 var
   I, J, StartPos: Integer;
   AssetName, Resolution: string;
@@ -678,14 +672,15 @@ var
   AddedResolutions: TStringList;
 begin
   InitializeArrayLengths;
-  
+
   AddedResolutions := TStringList.Create;
   try
-    Log('Populating resolutions for ' + Repo);
+    Log('Populating resolutions for ' + BodyRepos[RepoIndex]);
     ComboBox.Items.Clear;
     Sizes.Clear;
 
-    GetLatestReleaseHTTPInfo(Repo);
+    // Use cached data from RetrieveBodyInfo
+    LatestReleaseAssetsJSON := AssetDataList[RepoIndex].Text;
 
     StartPos := 1;
     while StartPos > 0 do
@@ -724,11 +719,11 @@ begin
                 TotalSize := StrToInt64(Sizes[AddedResolutions.IndexOf(Resolution)]) + Size;
                 Sizes[AddedResolutions.IndexOf(Resolution)] := IntToStr(TotalSize);
                 Log('Updated resolution: ' + Resolution + ' with new size: ' + IntToStr(TotalSize));
-              end;
-            end;
+              end
+            end
           end;
           StartPos := J + 1;
-        end;
+        end
       end
       else
         Break;
@@ -741,7 +736,7 @@ begin
     end;
   finally
     AddedResolutions.Free;
-  end;
+  end
 end;
 
 procedure ComboBoxChange(Sender: TObject);
@@ -818,12 +813,12 @@ end;
 procedure SetITDOptions;
 // Sets options for the InnoTools Downloader.
 begin
-	ITD_SetOption('ShowDetailsButton', 'false'); // Hide the Details button
-	ITD_SetOption('UI_DetailedMode', '0'); // Ensure detailed mode is off by default
-	ITD_SetOption('UI_AllowContinue', '1'); // Allow continuation if a download fails
-	ITD_SetOption('Debug_Messages', '1'); // Enable detailed error messages for debugging
-	ITD_SetOption('Debug_DownloadDelay', '0'); // No download delay
-	ITD_SetOption('UI_Caption', 'Downloading Files...');
+  ITD_SetOption('ShowDetailsButton', 'false'); // Hide the Details button
+  ITD_SetOption('UI_DetailedMode', '0'); // Ensure detailed mode is off by default
+  ITD_SetOption('UI_AllowContinue', '1'); // Allow continuation if a download fails
+  ITD_SetOption('Debug_Messages', '1'); // Enable detailed error messages for debugging
+  ITD_SetOption('Debug_DownloadDelay', '0'); // No download delay
+  ITD_SetOption('UI_Caption', 'Downloading Files...');
   ITD_SetOption('UI_Description', 'Please wait while the required files are being downloaded.');
 end;
 
@@ -869,26 +864,25 @@ begin
   EVEAndScattererCheckbox.Checked := False;
   Log('EVE and Scatterer download confirmation checkbox created');
 
-  Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
+    Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
   wpSelectResolutions := Page.ID;
 
   WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(0);
   WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(0);
 
   SetLength(ResolutionCombos, Length(BodyRepos));
-  SetLength(AssetDataList, Length(BodyRepos));
   SetLength(SizesList, Length(BodyRepos));
   SetLength(SizeLabelList, Length(BodyRepos));
 
   PageHeight := 0;
 
-  for i := 0 to High(BodyRepos) do
+  for I := 0 to High(BodyRepos) do
   begin
     BodyLabel := TLabel.Create(Page);
     BodyLabel.Parent := Page.Surface;
     BodyLabel.Left := ScaleX(8);
     BodyLabel.Top := ScaleY(PageHeight);
-    BodyLabel.Caption := ExtractBodyName(BodyRepos[i]);
+    BodyLabel.Caption := ExtractBodyName(BodyRepos[I]);
 
     ComboBox := TComboBox.Create(Page);
     ComboBox.Parent := Page.Surface;
@@ -896,33 +890,32 @@ begin
     ComboBox.Top := ScaleY(PageHeight);
     ComboBox.Width := ScaleX(50);
     ComboBox.OnChange := @ComboBoxChange;
-    ComboBox.Tag := i;
-    ResolutionCombos[i] := ComboBox;
+    ComboBox.Tag := I;
+    ResolutionCombos[I] := ComboBox;
 
-    AssetDataList[i] := TStringList.Create;
-    SizesList[i] := TStringList.Create;
-    PopulateResolutions(ComboBox, BodyRepos[i], SizesList[i]);
+    SizesList[I] := TStringList.Create;
+    PopulateResolutions(ComboBox, I, SizesList[I]);
 
-    Log('Dropdown for ' + BodyRepos[i] + ' created');
+    Log('Dropdown for ' + BodyRepos[I] + ' created');
 
     VersionLabel := TLabel.Create(Page);
     VersionLabel.Parent := Page.Surface;
     VersionLabel.Left := ScaleX(275);
     VersionLabel.Top := ScaleY(PageHeight);
-    if i < Length(BodyVersions) then
-      VersionLabel.Caption := 'Version: ' + BodyVersions[i];
+    if I < Length(BodyVersions) then
+      VersionLabel.Caption := 'Version: ' + BodyVersions[I];
 
     SizeLabel := TLabel.Create(Page);
     SizeLabel.Parent := Page.Surface;
     SizeLabel.Left := ScaleX(420);
     SizeLabel.Top := ScaleY(PageHeight);
-    if SizesList[i].Count > 0 then
-      SizeLabel.Caption := 'Total Size: ' + IntToStr(StrToIntDef(SizesList[i][0], 0) div 1048576) + ' MB'
+    if SizesList[I].Count > 0 then
+      SizeLabel.Caption := 'Total Size: ' + IntToStr(StrToIntDef(SizesList[I][0], 0) div 1048576) + ' MB'
     else
       SizeLabel.Caption := 'Total Size: Unknown';
-    SizeLabelList[i] := SizeLabel;
+    SizeLabelList[I] := SizeLabel;
 
-    Log('Size label for ' + BodyRepos[i] + ' initialized: ' + SizeLabel.Caption);
+    Log('Size label for ' + BodyRepos[I] + ' initialized: ' + SizeLabel.Caption);
 
     PageHeight := PageHeight + 25;
   end;
@@ -977,7 +970,6 @@ end;
 procedure AddToDownloadList(RepoName, Resolution, TempFileName: string);
 // Adds URLs to the download list based on selected resolutions.
 var
-  URL: string;
   AssetName, BrowserDownloadURL: string;
   I, J, StartPos: Integer;
 begin
@@ -1062,9 +1054,9 @@ end;
 procedure InitializeDownloadList;
 // Initializes the list of files to be downloaded.
 var
-  LatestVersion: string;
+  LatestVersion, LatestReleaseURL: string;
   ParallaxURL, ParallaxScatterTexturesURL: string;
-  LatestReleaseURL: string;
+  I: Integer;
 begin
   Log('Initializing download list');
   ITD_ClearFiles;
@@ -1086,12 +1078,14 @@ begin
   end;
 
   // Planetary textures at user-selected resolutions
-  for i := 0 to High(BodyRepos) do
+  for I := 0 to High(BodyRepos) do
   begin
-    Resolution := ResolutionCombos[i].Text;
-    LatestReleaseURL := GetRepoDownloadURL(BodyRepos[i], Resolution);
-    if LatestReleaseURL <> '' then
-      AddToDownloadList(LatestReleaseURL, Resolution, ExpandConstant('{tmp}\') + BodyRepos[i] + '_' + Resolution + '.7z');
+    Resolution := ResolutionCombos[I].Text;
+    LatestReleaseAssetsJSON := AssetDataList[I].Text;
+    LatestVersion := BodyVersions[I];
+
+    // Use the cached data to find the appropriate download URLs
+    AddToDownloadList(BodyRepos[I], Resolution, ExpandConstant('{tmp}\') + ExtractBodyName(BodyRepos[I]) + '_' + Resolution + '.7z');
   end;
 
   // RSSVE-Configs (if EVE and Scatterer are not installed)
@@ -1157,7 +1151,7 @@ begin
   Log('Starting download process for all assets');
 
   // Initiate download for all files added to the queue
-  ITD_DownloadFiles;
+  ITD_DownloadAfter(wpReady);
 
   // Get the download result
   ResultStr := ITD_GetString(ITDS_TitleCaption);  // Or any other appropriate method to get the result
@@ -1375,33 +1369,6 @@ begin
   Log('Folders removal completed.');
 end;
 
-procedure DownloadParallaxTextures;
-// Downloads specific textures for the Parallax mod.
-var
-  LatestVersion: string;
-  ParallaxURL, ParallaxScatterTexturesURL: string;
-begin
-  Log('Downloading Parallax textures(procedure)');
-  LatestVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
-  if LatestVersion = '' then
-  begin
-    Log('Failed to retrieve the latest release version.');
-    //MsgBox('Failed to retrieve the latest release version.', mbError, MB_OK);
-    Exit;
-  end;
-
-  ParallaxURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + LatestVersion + '/Parallax-' + LatestVersion + '.zip';
-  ParallaxScatterTexturesURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + LatestVersion + '/Parallax_ScatterTextures-' + LatestVersion + '.zip';
-
-  Log('Downloading ' + ParallaxURL + ' to ' + ExpandConstant('{tmp}\Parallax-' + LatestVersion + '.zip'));
-  ITD_AddFile(ParallaxURL, ExpandConstant('{tmp}\Parallax-' + LatestVersion + '.zip'));
-
-  Log('Downloading ' + ParallaxScatterTexturesURL + ' to ' + ExpandConstant('{tmp}\Parallax_ScatterTextures-' + LatestVersion + '.zip'));
-  ITD_AddFile(ParallaxScatterTexturesURL, ExpandConstant('{tmp}\Parallax_ScatterTextures-' + LatestVersion + '.zip'));
-
-  ITD_DownloadAfter(wpReady);
-end;
-
 procedure InitializeDownloadsDir;
 // Sets the directory for downloading files.
 begin
@@ -1432,8 +1399,7 @@ begin
 
   // Initialize and start downloading
   Log('Starting download process.');
-  InitializeDownloadList;
-  DownloadAndExtractFiles;
+  InitializeAndDownload
   Log('Finished downloading.');
 
   // Merge the GameData folders
@@ -1454,11 +1420,6 @@ begin
       Result := False; // Prevent navigation if RP-1 confirmation is not checked
       Exit;
     end
-    else
-    begin
-      // Initialize GitHub API after all validations
-      InitializeGitHubAPI;
-    end;
   end;
 
   // Ensure installation starts after the user has made their resolution selections
