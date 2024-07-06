@@ -88,7 +88,8 @@ procedure InitializeVariables;
 begin
   EVEDownloaded := False;
   ScattererDownloaded := False;
-	DownloadList := TStringList.Create;
+  DownloadList := TStringList.Create;
+  UserCanceled := False;
 end;
 
 procedure InitializeArrayLengths;
@@ -112,6 +113,7 @@ function GetDiskFreeSpaceEx(
   external 'GetDiskFreeSpaceExW@kernel32.dll stdcall';
 
 function GetFreeSpace(Drive: String): Int64;
+// Uses windows api to check available space
 var
   FreeAvailable, TotalSpace, TotalFree: Int64;
 begin
@@ -123,6 +125,7 @@ begin
 end;
 
 function IsEnoughDiskSpaceAvailable: Boolean;
+// Uses windows api to check available space (need 50 GB to be safe)
 var
   FreeSpace: Int64;
 begin
@@ -132,6 +135,7 @@ begin
 end;
 
 function InitializeSetup: Boolean;
+// Sets up disc space check
 begin
   Result := True;
   if not IsEnoughDiskSpaceAvailable then
@@ -139,6 +143,17 @@ begin
     MsgBox('You need at least 50 GB of free disk space to install this application.', mbError, MB_OK);
     Result := False;
   end;
+end;
+
+function ReadGitHubAccessToken: string;
+// Reads the GitHub access token from the environment variable if it exists.
+// Allows more downloads per hour
+begin
+  Result := GetEnv('MY_ACCESS_TOKEN');
+  if Result <> '' then
+    Log('GitHub access token found in environment variable.')
+  else
+    Log('GitHub access token not found in environment variable.');
 end;
 	
 procedure DeinitializeVariables;
@@ -389,6 +404,7 @@ begin
     HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
     HttpCli.Open('GET', GitHubAPI + Repo + '/releases/latest', False);
     HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
+    MyAccessToken := ReadGitHubAccessToken;
     if MyAccessToken <> '' then
       HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
 
@@ -877,7 +893,7 @@ procedure InitializeWizard;
 // Initializes the installation wizard, including UI elements and variables.
 // Sets up the installer’s user interface and prepares variables.
 var
-  i: Integer;
+  I: Integer;
   ComboBox: TComboBox;
   BodyLabel, VersionLabel, SizeLabel: TLabel;
   Page: TWizardPage;
@@ -887,6 +903,9 @@ begin
 
   InitializeBodyRepos;
   InitializeVariables;
+	
+	// Read GitHub access token from the registry
+  MyAccessToken := ReadGitHubAccessToken;
 
   RetrieveBodyInfo;
 
