@@ -39,6 +39,7 @@ WelcomeLabel2=This will install [name/ver] on your computer.%n%nMod created and 
 Source: "C:\Program Files\7-Zip\7z.exe"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "itdownload.dll"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "7za.exe"; DestDir: "{tmp}"; Flags: dontcopy
+Source: {#emit ReadReg(HKEY_LOCAL_MACHINE,'Software\Sherlock Software\InnoTools\Downloader','InstallPath','')}\itdownload.dll; Flags: dontcopy; DestDir: {tmp}
 
 [Code]
 const
@@ -59,6 +60,7 @@ var
 	MyAccessToken: string;
   Resolution: string;
   ResolutionCombos: array of TComboBox;
+	ResolutionPages: array of TWizardPage;
   RP1Checkbox: TNewCheckBox;
 	EVEAndScattererCheckbox: TNewCheckBox;
   ScattererDownloaded: Boolean;
@@ -445,29 +447,28 @@ begin
     MsgBox('Exception during HTTP request for latest release assets of ' + Repo + ': ' + GetExceptionMessage, mbError, MB_OK);
   end;
 
-  // Now that we have the URLs, we proceed to download using itdownload.dll
+  // Now that we have the URLs, we proceed to add them using ITD_AddFile
   for I := 0 to AssetURLs.Count - 1 do
   begin
     try
-      Log('Downloading asset: ' + AssetURLs[I]);
+      Log('Adding asset to download list: ' + AssetURLs[I]);
       ITD_AddFile(PChar(AssetURLs[I]), PChar(ExpandConstant('{tmp}\') + ExtractFileName(AssetURLs[I])));
-      ITD_DownloadFiles;  // Call the procedure without checking return value
     except
-      Log('Exception while downloading asset: ' + AssetURLs[I] + ': ' + GetExceptionMessage);
-      MsgBox('Exception while downloading asset: ' + AssetURLs[I] + ': ' + GetExceptionMessage, mbError, MB_OK);
+      Log('Exception while adding asset to download list: ' + AssetURLs[I] + ': ' + GetExceptionMessage);
+      MsgBox('Exception while adding asset to download list: ' + AssetURLs[I] + ': ' + GetExceptionMessage, mbError, MB_OK);
     end;
   end;
 
-	// If there are any URLs, concatenate them into a single string
-	if AssetURLs.Count > 0 then
-	begin
-		for I := 0 to AssetURLs.Count - 1 do
-		begin
-			if I > 0 then
-				Result := Result + #13#10; // Add a line break between URLs
-			Result := Result + AssetURLs[I];
-		end;
-	end;
+  // If there are any URLs, concatenate them into a single string
+  if AssetURLs.Count > 0 then
+  begin
+    for I := 0 to AssetURLs.Count - 1 do
+    begin
+      if I > 0 then
+        Result := Result + #13#10; // Add a line break between URLs
+      Result := Result + AssetURLs[I];
+    end;
+  end;
 
   AssetURLs.Free;
 end;
@@ -617,12 +618,11 @@ begin
   end;
 end;
 
-
 procedure InitializeWizard;
 var
   i: Integer;
   ComboBox: TComboBox;
-  ResolutionPages: array of TWizardPage;
+	Page: TWizardPage;
 begin
   Log('Initializing wizard');
 
@@ -630,7 +630,25 @@ begin
   InitializeBodyRepos;
   InitializeVariables;
 
-  ITD_Init();
+  // Initialize ITD
+  try
+    ITD_Init();
+    Log('ITD_Init successful');
+  except
+    Log('ITD_Init failed: ' + GetExceptionMessage);
+    MsgBox('Initialization of download library failed: ' + GetExceptionMessage, mbError, MB_OK);
+    Exit;
+  end;
+  
+  // Initialize UI
+  try
+    ITD_Internal_InitUI(WizardForm.Handle);
+    Log('ITD_Internal_InitUI successful');
+  except
+    Log('ITD_Internal_InitUI failed: ' + GetExceptionMessage);
+    MsgBox('UI initialization failed: ' + GetExceptionMessage, mbError, MB_OK);
+    Exit;
+  end;
 
   // Initialize DownloadsDir
   DownloadsDir := ExpandConstant('{userdocs}\Downloads');
@@ -638,9 +656,7 @@ begin
 
   // Set options if needed, for example, set the download timeout to 60 seconds:
   ITD_SetOption('Timeout', '60');
-
-  // Specify that the download page should appear after the "Ready to Install" page
-  ITD_DownloadAfter(wpReady);
+  ITD_SetOption('HTTPAgent', 'InnoSetupDownloader');
 
   // Create RP-1 installation confirmation checkbox
   RP1Checkbox := TNewCheckBox.Create(WizardForm);
@@ -663,22 +679,21 @@ begin
   EVEAndScattererCheckbox.Caption := '(Optional) I am using Blackrack''s EVE and Scatterer.';
   EVEAndScattererCheckbox.Checked := False; // Default to unchecked
   Log('EVE and Scatterer download confirmation checkbox created');
-	
-  // Create custom pages for selecting resolutions
-  SetLength(ResolutionPages, Length(BodyRepos));
+  
+  // Create a single custom page for selecting resolutions
+  Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
   SetLength(ResolutionCombos, Length(BodyRepos));
 
   for i := 0 to High(BodyRepos) do
   begin
-    Log('Creating resolution page for ' + BodyRepos[i]);
-    ResolutionPages[i] := CreateCustomPage(wpWelcome, 'Select Resolution for ' + Copy(BodyRepos[i], 11, Length(BodyRepos[i]) - 10), 'Select the desired resolution for ' + Copy(BodyRepos[i], 11, Length(BodyRepos[i]) - 10));
-    ComboBox := TComboBox.Create(ResolutionPages[i]);
-    ComboBox.Parent := ResolutionPages[i].Surface;
+    ComboBox := TComboBox.Create(Page);
+    ComboBox.Parent := Page.Surface;
     ComboBox.Left := ScaleX(18);
-    ComboBox.Top := ScaleY(180);
-    ComboBox.Width := ResolutionPages[i].SurfaceWidth - ScaleX(36);
+    ComboBox.Top := ScaleY(50 + (i * 40));  // Adjust top position for each dropdown
+    ComboBox.Width := Page.SurfaceWidth - ScaleX(36);
     ResolutionCombos[i] := ComboBox;
-    Log('Resolution page created for ' + BodyRepos[i]);
+    PopulateResolutions(ComboBox, BodyRepos[i]);
+    Log('Dropdown for ' + BodyRepos[i] + ' created');
   end;
 
   Log('Wizard initialization completed');
@@ -906,64 +921,39 @@ end;
 procedure DownloadAndExtractFiles;
 var
   I: Integer;
-  DownloadItem, URL, TempFile: string;
-  DelimiterPos: Integer;
-  DownloadResult: Integer;
+  ResultStr: String;
 begin
-  for I := 0 to DownloadList.Count - 1 do
+  Log('Starting download process for all assets');
+
+  // Initiate download for all files added to the queue
+  ITD_DownloadFiles;
+
+  // Get the download result
+  ResultStr := ITD_GetString(ITDS_TitleCaption);  // Or any other appropriate method to get the result
+
+  // Check download result
+  if ResultStr = '0' then  // Assuming '0' indicates success
   begin
-    // Get the full item from DownloadList
-    DownloadItem := DownloadList[I];
-
-    // Find the position of the '=' delimiter
-    DelimiterPos := Pos('=', DownloadItem);
-
-    // Ensure the delimiter is found and extract URL and TempFile
-    if DelimiterPos > 0 then
+    Log('All assets downloaded successfully. Extracting files...');
+    for I := 0 to DownloadList.Count - 1 do
     begin
-      URL := Trim(Copy(DownloadItem, 1, DelimiterPos - 1));
-      TempFile := Trim(Copy(DownloadItem, DelimiterPos + 1, Length(DownloadItem) - DelimiterPos));
-    end
-    else
-    begin
-      Log('Invalid entry in DownloadList: ' + DownloadItem);
-      MsgBox('Invalid entry in DownloadList: ' + DownloadItem, mbError, MB_OK);
-      Continue; // Skip this item if it's invalid
-    end;
-
-    Log('Downloading ' + URL + ' to ' + TempFile);
-
-    // Add the file to download queue
-    ITD_AddFile(URL, TempFile);
-
-    // Show download progress screen after page wpReady
-    ITD_DownloadAfter(wpReady);
-
-    // Initiate download
-    DownloadResult := ITD_DownloadFile(URL, TempFile);
-
-    // Check download result
-    if DownloadResult = 0 then
-    begin
-      Log('Downloaded ' + URL + '. Extracting...');
-
       // Extract the downloaded file (assuming 7zip extraction)
-      if Extract7Zip(TempFile, ExpandConstant('{tmp}')) then
+      if Extract7Zip(ExpandConstant('{tmp}\') + ExtractFileName(DownloadList[I]), ExpandConstant('{tmp}')) then
       begin
-        Log('Extraction completed for ' + URL);
-        Log('Installation completed for ' + URL);
+        Log('Extraction completed for ' + DownloadList[I]);
       end
       else
       begin
-        Log('Failed to extract ' + URL);
-        MsgBox('Failed to extract ' + URL + '.', mbError, MB_OK);
+        Log('Failed to extract ' + DownloadList[I]);
+        MsgBox('Failed to extract ' + DownloadList[I] + '.', mbError, MB_OK);
       end;
-    end
-    else
-    begin
-      Log('Failed to download ' + URL + '. Error code: ' + IntToStr(DownloadResult));
-      MsgBox('Failed to download ' + URL + '.', mbError, MB_OK);
     end;
+    Log('All files extracted successfully.');
+  end
+  else
+  begin
+    Log('Failed to download assets. Error: ' + ResultStr);
+    MsgBox('Failed to download assets. Error: ' + ResultStr, mbError, MB_OK);
   end;
 end;
 
@@ -1206,22 +1196,44 @@ begin
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  i: Integer;
 begin
   Result := True; // Allow navigation by default
 
-  // Validate RP-1 checkbox before proceeding
-  if (CurPageID = wpWelcome) and (not CheckRP1Confirmation) then
+  // Validate RP-1 checkbox before proceeding from the welcome page
+  if (CurPageID = wpWelcome) then
   begin
-    Result := False; // Prevent navigation
-  end
-  else if (CurPageID = wpWelcome) then
+    if not CheckRP1Confirmation then
+    begin
+      Result := False; // Prevent navigation if RP-1 confirmation is not checked
+      Exit;
+    end
+    else
+    begin
+      // Ensure user selects resolutions for all required pages
+      for i := 0 to High(ResolutionCombos) do
+      begin
+        if ResolutionCombos[i].ItemIndex = -1 then
+        begin
+          MsgBox('Please select a resolution for ' + Copy(BodyRepos[i], 11, Length(BodyRepos[i]) - 10) + '.', mbError, MB_OK);
+          Result := False; // Prevent navigation if any resolution is not selected
+          Exit;
+        end;
+      end;
+
+      // Initialize GitHub API after all validations
+      InitializeGitHubAPI;
+    end;
+  end;
+
+  // If user is on the resolutions page, start the installation process
+  if (CurPageID = wpReady) then
   begin
-    // Initialize GitHub API and start the installation process after the welcome page
-    InitializeGitHubAPI;
     StartInstallation;
   end;
 end;
-
+	
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
