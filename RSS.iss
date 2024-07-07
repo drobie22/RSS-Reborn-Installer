@@ -36,12 +36,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 WelcomeLabel2=This will install RSS Reborn into your default KSP directory.%n%nMod created and maintained by Ballisticfox, Techo, and VaNnadin.%n[name/ver] created by DRobie22.
 
 [Files]
-Source: "C:\Program Files\7-Zip\7z.exe"; DestDir: "{tmp}"; Flags: dontcopy
-Source: "Add-Ons\itdownload.dll"; DestDir: "{tmp}"; Flags: dontcopy
-Source: "Add-Ons\7za.exe"; DestDir: "{tmp}"; Flags: dontcopy
-Source: "Licenses\license.txt"; DestDir: "{app}"; Flags: dontcopy
-Source: "Licenses\lgpl-3.0.txt"; DestDir: "{app}"; Flags: dontcopy
-Source: {#emit ReadReg(HKEY_LOCAL_MACHINE,'Software\Sherlock Software\InnoTools\Downloader','InstallPath','')}\itdownload.dll; Flags: dontcopy; DestDir: {tmp}
+Source: "C:\Program Files\7-Zip\7z.exe"; DestDir: "{tmp}"; Flags: dontcopy;
+Source: "Add-Ons\itdownload.dll"; DestDir: "{tmp}"; Flags: dontcopy;
+Source: "Licenses\license.txt"; DestDir: "{app}"; Flags: dontcopy;
+Source: "Licenses\lgpl-3.0.txt"; DestDir: "{app}"; Flags: dontcopy;
+Source: {#emit ReadReg(HKEY_LOCAL_MACHINE,'Software\Sherlock Software\InnoTools\Downloader','InstallPath','')}\itdownload.dll; Flags: dontcopy; DestDir: {tmp};
 
 [Code]
 const
@@ -59,10 +58,12 @@ var
   BodyRepos: array[0..11] of string;
   BodySizes: array of string;	
 	BodyVersions: array of string;
+	CachedReleaseInfo: TStringList;
   DownloadList: TStringList;
   DownloadsDir: string;
 	EVEAndScattererCheckbox: TNewCheckBox;
   EVEdownloaded: Boolean;
+	ITDLogFilePath: string;
 	KSP_DIR: string;
   KSPDirPage: TInputDirWizardPage;
 	LatestReleaseAssetsJSON: string;
@@ -90,6 +91,7 @@ begin
   EVEDownloaded := False;
   ScattererDownloaded := False;
   DownloadList := TStringList.Create;
+	CachedReleaseInfo := TStringList.Create;
   UserCanceled := False;
   Log('Variables initialized.');
 end;
@@ -100,12 +102,17 @@ begin
   // Set the lengths of the arrays
   SetLength(Sizes, 12);
   SetLength(SizeLabelList, 12);
+  SetLength(ResolutionCombos, 12);
+  SetLength(SizesList, 12);
 end;
 
-function AddFileSize(CurrentSize, NewSize: Int64): Int64;
-// Adds two file sizes together to accumulate the total size of files.
+function Is7ZipInstalled: Boolean;
 begin
-  Result := CurrentSize + NewSize;
+  Result := FileExists('C:\Program Files\7-Zip\7z.exe') or FileExists('C:\Program Files (x86)\7-Zip\7z.exe');
+  if Result then
+    Log('7-Zip is installed.')
+  else
+    Log('7-Zip is not installed.');
 end;
 
 function GetDiskFreeSpaceEx(
@@ -136,13 +143,28 @@ begin
   Result := FreeSpace >= RequiredSpace;
 end;
 
+procedure LogDownloadList;
+var
+  I: Integer;
+begin
+  Log('DownloadList Contents:');
+  for I := 0 to DownloadList.Count - 1 do
+  begin
+    Log('Download item ' + IntToStr(I) + ': ' + DownloadList[I]);
+  end;
+end;
+
 function InitializeSetup: Boolean;
-// Sets up disc space check
 begin
   Result := True;
   if not IsEnoughDiskSpaceAvailable then
   begin
     MsgBox('You need at least 50 GB of free disk space to install this application.', mbError, MB_OK);
+    Result := False;
+  end
+  else if not Is7ZipInstalled then
+  begin
+    MsgBox('7-Zip is not installed. Please install 7-Zip to continue.', mbError, MB_OK);
     Result := False;
   end;
 end;
@@ -162,7 +184,8 @@ procedure DeinitializeVariables;
 // Frees allocated resources. Prevents memory leaks by releasing resources.
 begin
   DownloadList.Free;
-end;	
+  CachedReleaseInfo.Free; // Free cache
+end;
 
 procedure LogSizeError(Body: String; Size: Int64);
 // Logs an error message for file size overflow.
@@ -324,33 +347,42 @@ begin
 end;
 
 function Extract7Zip(ArchivePath, DestDir: string): Boolean;
-// Extracts archives using 7-Zip.
 var
   ZipPath: string;
   ResultCode: Integer;
+  CommandLine: string;
 begin
   Log(Format('Extracting archive %s to directory %s', [ArchivePath, DestDir]));
   
-  // Set the path to 7-Zip executable
-  ZipPath := ExpandConstant('{tmp}\7za.exe');
-  
-  // Check if 7za.exe exists
-  if not FileExists(ZipPath) then
+  if FileExists('C:\Program Files\7-Zip\7z.exe') then
+    ZipPath := 'C:\Program Files\7-Zip\7z.exe'
+  else if FileExists('C:\Program Files (x86)\7-Zip\7z.exe') then
+    ZipPath := 'C:\Program Files (x86)\7-Zip\7z.exe'
+  else
   begin
     Log('7-Zip executable not found!');
+    MsgBox('7-Zip executable not found! Please ensure 7-Zip is installed.', mbError, MB_OK);
     Result := False;
     Exit;
   end;
   
-  // Run 7-Zip to extract the archive
+  if not FileExists(ArchivePath) then
+  begin
+    Log('Archive file not found: ' + ArchivePath);
+    Result := False;
+    Exit;
+  end;
+  
+  CommandLine := Format('"%s" x "%s" -o"%s" -y', [ZipPath, ArchivePath, DestDir]);
+  Log('Running command: ' + CommandLine);
+  
   if not Exec(ZipPath, 'x "' + ArchivePath + '" -o"' + DestDir + '" -y', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    Log(Format('Failed to extract %s, error code: %d', [ArchivePath, ResultCode]));
+    Log(Format('Failed to execute 7-Zip for %s, error code: %d', [ArchivePath, ResultCode]));
     Result := False;
     Exit;
   end;
   
-  // Check if extraction was successful
   if ResultCode <> 0 then
   begin
     Log(Format('7-Zip returned error code %d while extracting %s', [ResultCode, ArchivePath]));
@@ -366,6 +398,28 @@ function FormatSize(SizeInBytes: Integer): string;
 // Converts file sizes from bytes to MB.
 begin
   Result := IntToStr(Round(SizeInBytes / 1048576)) + ' MB'; // Convert bytes to MB and format
+end;
+
+function GetCachedJSONForRepo(Repo: string): string;
+var
+  i: Integer;
+  KeyValue: TStringList;
+begin
+  Result := '';
+  KeyValue := TStringList.Create;
+  try
+    for i := 0 to CachedReleaseInfo.Count - 1 do
+    begin
+      KeyValue.DelimitedText := CachedReleaseInfo[i];
+      if SameText(KeyValue[0], Repo) then
+      begin
+        Result := KeyValue[1];
+        Exit;
+      end;
+    end;
+  finally
+    KeyValue.Free;
+  end;
 end;
 
 function GetFileSizeForLatestReleaseFromAssets(AssetsJSON: string): string;
@@ -395,87 +449,134 @@ procedure GetLatestReleaseHTTPInfo(Repo: string);
 var
   HttpCli: Variant;
   I, J: Integer;
-  AssetsURL: string;
+  AssetsURL, CachedJSON: string;
 begin
-  Log('Fetching latest release info for ' + Repo);
-  LatestReleaseJSON := '';
-  LatestReleaseAssetsJSON := '';
-  LatestReleaseVersion := '';
-
-  try
-    HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
-    HttpCli.Open('GET', GitHubAPI + Repo + '/releases/latest', False);
-    HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
-    MyAccessToken := ReadGitHubAccessToken;
-    if MyAccessToken <> '' then
-      HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
-
-    HttpCli.Send;
-
-    if HttpCli.Status = 200 then
+  // Check if Repo information is already cached
+  CachedJSON := GetCachedJSONForRepo(Repo);
+  if CachedJSON <> '' then
+  begin
+    Log('Using cached release info for ' + Repo);
+    LatestReleaseJSON := CachedJSON;
+    // Parse the cached JSON to extract necessary fields
+    I := Pos('"tag_name":"', LatestReleaseJSON);
+    if I > 0 then
     begin
-      LatestReleaseJSON := HttpCli.ResponseText;
-      if LatestReleaseJSON = '' then
-      begin
-        Log('Empty response for latest release info');
-        Exit;
-      end;
-
-      I := Pos('"tag_name":"', LatestReleaseJSON);
-      if I > 0 then
-      begin
-        I := I + Length('"tag_name":"');
-        J := FindNextQuote(LatestReleaseJSON, I);
-        if J > 0 then
-          LatestReleaseVersion := Copy(LatestReleaseJSON, I, J - I);
-      end;
-
-      I := Pos('"assets_url":"', LatestReleaseJSON);
-      if I > 0 then
-      begin
-        I := I + Length('"assets_url":"');
-        J := FindNextQuote(LatestReleaseJSON, I);
-        if J > 0 then
-        begin
-          AssetsURL := Copy(LatestReleaseJSON, I, J - I);
-          HttpCli.Open('GET', AssetsURL, False);
-          HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
-          if MyAccessToken <> '' then
-            HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
-
-          HttpCli.Send;
-          if HttpCli.Status = 200 then
-          begin
-            LatestReleaseAssetsJSON := HttpCli.ResponseText;
-            if LatestReleaseAssetsJSON = '' then
-              Log('No assets found for the latest release');
-          end
-          else
-            Log('Failed to fetch assets info, status: ' + IntToStr(HttpCli.Status));
-        end;
-      end;
-    end
-    else
+      I := I + Length('"tag_name":"');
+      J := FindNextQuote(LatestReleaseJSON, I);
+      if J > 0 then
+        LatestReleaseVersion := Copy(LatestReleaseJSON, I, J - I);
+    end;
+    I := Pos('"assets_url":"', LatestReleaseJSON);
+    if I > 0 then
     begin
-      Log('Failed to fetch latest release info, status: ' + IntToStr(HttpCli.Status));
-      if HttpCli.Status = 403 then
+      I := I + Length('"assets_url":"');
+      J := FindNextQuote(LatestReleaseJSON, I);
+      if J > 0 then
       begin
-        Log('HTTP 403 Forbidden error. Possible rate limit exceeded.');
-        if MsgBox('GitHub download rate limit exceeded. Please wait a moment before retrying. Click OK to retry now, or Cancel to exit.', mbInformation, MB_OKCANCEL) = IDOK then
+        AssetsURL := Copy(LatestReleaseJSON, I, J - I);
+        HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
+        HttpCli.Open('GET', AssetsURL, False);
+        HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
+				Log('GitHub Call');
+        if MyAccessToken <> '' then
+          HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
+        HttpCli.Send;
+        if HttpCli.Status = 200 then
         begin
-          Log('User acknowledged rate limit message. Retrying...');
-          GetLatestReleaseHTTPInfo(Repo); // Retry fetching release info
+          LatestReleaseAssetsJSON := HttpCli.ResponseText;
+          if LatestReleaseAssetsJSON = '' then
+            Log('No assets found for the latest release');
         end
         else
-        begin
-          Log('User canceled retry. Exiting installer.');
-          UserCanceled := True; // Set the cancellation flag
-          Exit;
-        end;
+          Log('Failed to fetch assets info, status: ' + IntToStr(HttpCli.Status));
       end;
     end;
-  except
-    Log('Exception occurred while fetching latest release info: ' + GetExceptionMessage);
+  end
+  else
+  begin
+    Log('Fetching latest release info for ' + Repo);
+    LatestReleaseJSON := '';
+    LatestReleaseAssetsJSON := '';
+    LatestReleaseVersion := '';
+
+    try
+      HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
+      HttpCli.Open('GET', GitHubAPI + Repo + '/releases/latest', False);
+      HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
+      MyAccessToken := ReadGitHubAccessToken;
+      if MyAccessToken <> '' then
+        HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
+
+      HttpCli.Send;
+
+      if HttpCli.Status = 200 then
+      begin
+        LatestReleaseJSON := HttpCli.ResponseText;
+        if LatestReleaseJSON = '' then
+        begin
+          Log('Empty response for latest release info');
+          Exit;
+        end;
+
+        I := Pos('"tag_name":"', LatestReleaseJSON);
+        if I > 0 then
+        begin
+          I := I + Length('"tag_name":"');
+          J := FindNextQuote(LatestReleaseJSON, I);
+          if J > 0 then
+            LatestReleaseVersion := Copy(LatestReleaseJSON, I, J - I);
+        end;
+
+        I := Pos('"assets_url":"', LatestReleaseJSON);
+        if I > 0 then
+        begin
+          I := I + Length('"assets_url":"');
+          J := FindNextQuote(LatestReleaseJSON, I);
+          if J > 0 then
+          begin
+            AssetsURL := Copy(LatestReleaseJSON, I, J - I);
+            HttpCli.Open('GET', AssetsURL, False);
+            HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
+            if MyAccessToken <> '' then
+              HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
+
+            HttpCli.Send;
+            if HttpCli.Status = 200 then
+            begin
+              LatestReleaseAssetsJSON := HttpCli.ResponseText;
+              if LatestReleaseAssetsJSON = '' then
+                Log('No assets found for the latest release');
+            end
+            else
+              Log('Failed to fetch assets info, status: ' + IntToStr(HttpCli.Status));
+          end;
+        end;
+
+        // Cache the retrieved release info
+        CachedReleaseInfo.Add(Repo + '=' + LatestReleaseJSON);
+      end
+      else
+      begin
+        Log('Failed to fetch latest release info, status: ' + IntToStr(HttpCli.Status));
+        if HttpCli.Status = 403 then
+        begin
+          Log('HTTP 403 Forbidden error. Possible rate limit exceeded.');
+          if MsgBox('GitHub download rate limit exceeded. Please wait a moment before retrying. Click OK to retry now, or Cancel to exit.', mbInformation, MB_OKCANCEL) = IDOK then
+          begin
+            Log('User acknowledged rate limit message. Retrying...');
+            GetLatestReleaseHTTPInfo(Repo); // Retry fetching release info
+          end
+          else
+          begin
+            Log('User canceled retry. Exiting installer.');
+            UserCanceled := True; // Set the cancellation flag
+            Exit;
+          end;
+        end;
+      end;
+    except
+      Log('Exception occurred while fetching latest release info: ' + GetExceptionMessage);
+    end;
   end;
 end;
 
@@ -669,54 +770,6 @@ begin
   end;
 end;
 
-function GetAssetSizeFromRepo(Repo: string; AssetName: string): Integer;
-// Fetches the size of a specific asset from a GitHub repository.
-var
-  HttpCli: Variant;
-  JSON: string;
-  I, J: Integer;
-begin
-  UserCanceled := False;
-  Result := -1;
-  try
-    HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
-    HttpCli.Open('GET', GitHubAPI + Repo + '/releases/latest', False);
-    HttpCli.SetRequestHeader('User-Agent', 'InnoSetup');
-    if MyAccessToken <> '' then
-    begin
-      HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
-      Log('Authorization header set with token.');
-    end
-    else
-    begin
-      Log('GitHub Access Token is empty.');
-    end;
-    HttpCli.Send;
-
-    if HttpCli.Status = 200 then
-    begin
-      JSON := HttpCli.ResponseText;
-      I := Pos('"name":"' + AssetName + '"', JSON);
-      if I > 0 then
-      begin
-        I := PosEx('"size":', JSON, I);
-        if I > 0 then
-        begin
-          I := I + Length('"size":');
-          J := PosEx(',', JSON, I);
-          Result := StrToIntDef(Copy(JSON, I, J - I), -1);
-        end;
-      end;
-    end
-    else
-    begin
-      Log('Failed to get asset size from ' + Repo + '. Status: ' + IntToStr(HttpCli.Status));
-    end;
-  except
-    Log('Exception during HTTP request for asset size of ' + AssetName + ' in ' + Repo + ': ' + GetExceptionMessage);
-  end;
-end;
-
 procedure UpdateSizeLabel(ComboBoxTag: Integer);
 // Updates the label showing the total size of selected resolutions.
 begin
@@ -855,6 +908,22 @@ begin
   end;
 end;
 
+procedure LogDownloadListDetails;
+var
+  I: Integer;
+  Entry, URL, FileName: string;
+begin
+  Log('Listing all files to be downloaded and their URLs:');
+  for I := 0 to DownloadList.Count - 1 do
+  begin
+    Entry := DownloadList[I];
+    URL := Copy(Entry, 1, Pos('=', Entry) - 1);
+    FileName := Copy(Entry, Pos('=', Entry) + 1, Length(Entry));
+    Log('File: ' + FileName + ' URL: ' + URL);
+  end;
+  Log('Files will be downloaded to: ' + ExpandConstant('{tmp}'));
+end;
+
 function CheckRP1Confirmation: Boolean;
 // Ensures the user has installed RP-1 before proceeding.
 begin
@@ -882,13 +951,32 @@ end;
 procedure SetITDOptions;
 // Sets options for the InnoTools Downloader.
 begin
-  ITD_SetOption('ShowDetailsButton', 'false'); // Hide the Details button
-  ITD_SetOption('UI_DetailedMode', '0'); // Ensure detailed mode is off by default
-  ITD_SetOption('UI_AllowContinue', '1'); // Allow continuation if a download fails
-  ITD_SetOption('Debug_Messages', '1'); // Enable detailed error messages for debugging
-  ITD_SetOption('Debug_DownloadDelay', '0'); // No download delay
+  ITDLogFilePath := ExpandConstant('{tmp}\itd_log.txt');  // Set the ITD log file path
+  ITD_SetOption('ShowDetailsButton', 'true');
+  ITD_SetOption('UI_DetailedMode', '1');
+  ITD_SetOption('UI_AllowContinue', '1');
+  ITD_SetOption('Debug_Messages', '1');
+  ITD_SetOption('Debug_DownloadDelay', '0');
   ITD_SetOption('UI_Caption', 'Downloading Files...');
   ITD_SetOption('UI_Description', 'Please wait while the required files are being downloaded.');
+  ITD_SetOption('RetryCount', '0'); // No retries
+  ITD_SetOption('LogToFile', '1');  // Enable logging to a file
+  ITD_SetOption('LogFile', ITDLogFilePath);  // Set the log file path
+  ITD_SetOption('RetryDelay', '5000'); // Add retry delay
+  Log('ITD options set.');
+end;
+
+procedure SetCustomUserAgent();
+var
+  UA: String;
+begin
+  UA := 'InnoTools Downloader ' + ITD_GetOption('ITD_Version') + ' (Windows ';
+  if UsingWinNT then UA := UA + 'NT ';
+  if IsWin64 then UA := UA + 'x64 ';
+  UA := UA + GetWindowsVersionString + ')';
+  
+  // Set the custom user agent
+  ITD_SetOption('ITD_Agent', UA);
 end;
 
 procedure InitializeWizard;
@@ -903,6 +991,7 @@ begin
 
   InitializeBodyRepos;
   InitializeVariables;
+	InitializeArrayLengths;
   
   // Read GitHub access token from the registry
   MyAccessToken := ReadGitHubAccessToken;
@@ -995,10 +1084,11 @@ begin
     PageHeight := PageHeight + 25;
   end;
 
-  try
+   try
     Log('Calling ITD_Init');
     ITD_Init;
     Log('ITD_Init successful');
+
   except
     Log('ITD_Init failed: ' + GetExceptionMessage);
     Exit;
@@ -1077,6 +1167,7 @@ begin
             if J > 0 then
             begin
               BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
+              Log('Adding to download list: ' + BrowserDownloadURL + ' as ' + TempFileName);
               DownloadList.Add(BrowserDownloadURL + '=' + TempFileName);
             end;
           end;
@@ -1109,7 +1200,23 @@ begin
       if J > 0 then
       begin
         AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
-        if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
+        // Match specific file naming pattern for Kopernicus
+        if (Repo = 'ballisticfox/Kopernicus') and (Pos('Kopernicus-1.12.x-', AssetName) > 0) then
+        begin
+          I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
+          if I > 0 then
+          begin
+            I := I + Length('"browser_download_url":"');
+            J := FindNextQuote(LatestReleaseAssetsJSON, I);
+            if J > 0 then
+            begin
+              BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
+              Result := BrowserDownloadURL;
+              Exit;
+            end;
+          end;
+        end
+        else if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
         begin
           I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
           if I > 0 then
@@ -1133,185 +1240,82 @@ begin
 end;
 
 procedure InitializeDownloadList;
-// Initializes the list of files to be downloaded.
 var
   LatestVersion, LatestReleaseURL: string;
-  ParallaxURL, ParallaxScatterTexturesURL: string;
   I: Integer;
 begin
   Log('Initializing download list');
   ITD_ClearFiles;
 
-  // RSS-Configs
-  LatestVersion := GetLatestReleaseVersion('RSS-Reborn/RSS-Configs');
-  if LatestVersion <> '' then
-  begin
-    LatestReleaseURL := 'https://api.github.com/RSS-Reborn/RSS-Configs/releases/download/' + LatestVersion + '/RSS_Configs.7z';
-    AddToDownloadList(LatestReleaseURL, '', ExpandConstant('{tmp}\RSS_Configs.7z'));
-  end;
-  
-  // RSS-Terrain
-  LatestVersion := GetLatestReleaseVersion('RSS-Reborn/RSS-Terrain');
-  if LatestVersion <> '' then
-  begin
-    LatestReleaseURL := 'https://api.github.com/RSS-Reborn/RSS-Terrain/releases/download/' + LatestVersion + '/RSS_Terrain.7z';
-    AddToDownloadList(LatestReleaseURL, '', ExpandConstant('{tmp}\RSS_Terrain.7z'));
-  end;
+  // RSS Configs
+	LatestReleaseURL := GetRepoDownloadURL('RSS-Reborn/RSS-Configs', '');
+  if LatestReleaseURL <> '' then
+    AddToDownloadList('RSS-Reborn/RSS-Configs', '', ExpandConstant('{tmp}\RSS_Configs.7z'));
 
-  // Planetary textures at user-selected resolutions
-  for I := 0 to High(BodyRepos) do
+	// RSS Terrain
+	LatestReleaseURL := GetRepoDownloadURL('RSS-Reborn/RSS-Terrain', '');
+  if LatestReleaseURL <> '' then
+    AddToDownloadList('RSS-Reborn/RSS-Terrain', '', ExpandConstant('{tmp}\RSS_Terrain.7z'));
+
+  // Bodies
+	for I := 0 to High(BodyRepos) do
   begin
     Resolution := ResolutionCombos[I].Text;
     LatestReleaseAssetsJSON := AssetDataList[I].Text;
     LatestVersion := BodyVersions[I];
 
-    // Use the cached data to find the appropriate download URLs
     AddToDownloadList(BodyRepos[I], Resolution, ExpandConstant('{tmp}\') + ExtractBodyName(BodyRepos[I]) + '_' + Resolution + '.7z');
   end;
 
-  // RSSVE-Configs (if EVE and Scatterer are not installed)
-  if not EVEAndScattererCheckbox.Checked then
+  // RSSVE Configs
+	if not EVEAndScattererCheckbox.Checked then
   begin
-    LatestVersion := GetLatestReleaseVersion('RSS-Reborn/RSSVE-Configs');
-    if LatestVersion <> '' then
-    begin
-      LatestReleaseURL := 'https://github.com/RSS-Reborn/RSSVE-Configs/releases/download/' + LatestVersion + '/RSSVE_Configs.7z';
-      AddToDownloadList(LatestReleaseURL, '', ExpandConstant('{tmp}\RSSVE_Configs.7z'));
-    end;
+    LatestReleaseURL := GetRepoDownloadURL('RSS-Reborn/RSSVE-Configs', '');
+    if LatestReleaseURL <> '' then
+      AddToDownloadList('RSS-Reborn/RSSVE-Configs', '', ExpandConstant('{tmp}\RSSVE_Configs.7z'));
   end;
 
-  // RSSVE-Textures
-  LatestVersion := GetLatestReleaseVersion('RSS-Reborn/RSSVE-Textures');
-  if LatestVersion <> '' then
+  // RSSVE Textures
+	LatestReleaseURL := GetRepoDownloadURL('RSS-Reborn/RSSVE-Textures', '');
+  if LatestReleaseURL <> '' then
+    AddToDownloadList('RSS-Reborn/RSSVE-Textures', '', ExpandConstant('{tmp}\RSSVE_Textures.7z'));
+
+  // Scatterer
+	if not ScattererDownloaded then
   begin
-    LatestReleaseURL := 'https://github.com/RSS-Reborn/RSSVE-Textures/releases/download/' + LatestVersion + '/RSSVE_Textures.7z';
-    AddToDownloadList(LatestReleaseURL, '', ExpandConstant('{tmp}\RSSVE_Textures.7z'));
+    LatestReleaseURL := GetRepoDownloadURL('LGhassen/Scatterer', '');
+    if LatestReleaseURL <> '' then
+      AddToDownloadList('LGhassen/Scatterer', '', ExpandConstant('{tmp}\Scatterer.zip'));
   end;
 
-  // Scatterer (if not already downloaded by user)
-  if not ScattererDownloaded then
+  // EVE
+	if not EVEDownloaded then
   begin
-    LatestVersion := GetLatestReleaseVersion('LGhassen/Scatterer');
-    if LatestVersion <> '' then
-    begin
-      LatestReleaseURL := 'https://github.com/LGhassen/Scatterer/releases/download/' + LatestVersion + '/Scatterer.zip';
-      AddToDownloadList(LatestReleaseURL, '', ExpandConstant('{tmp}\Scatterer.zip'));
-    end;
+    LatestReleaseURL := GetRepoDownloadURL('LGhassen/EnvironmentalVisualEnhancements', '');
+    if LatestReleaseURL <> '' then
+      AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', ExpandConstant('{tmp}\Environmental_Visual_Enhancements_Redux-' + LatestVersion + '.zip'));
   end;
 
-  // EVE (if not already downloaded by user)
-  if not EVEDownloaded then
+  // Kopernicus
+	LatestReleaseURL := GetRepoDownloadURL('ballisticfox/Kopernicus', '');
+  if LatestReleaseURL <> '' then
+    AddToDownloadList('ballisticfox/Kopernicus', '', ExpandConstant('{tmp}\') + ExtractFileName(LatestReleaseURL));
+
+  // Parallax
+	LatestReleaseURL := GetRepoDownloadURL('Gameslinx/Tessellation', '');
+  if LatestReleaseURL <> '' then
   begin
-    LatestVersion := GetLatestReleaseVersion('LGhassen/EnvironmentalVisualEnhancements');
-    if LatestVersion <> '' then
-    begin
-      LatestReleaseURL := 'https://github.com/LGhassen/EnvironmentalVisualEnhancements/releases/download/' + LatestVersion + '/Environmental_Visual_Enhancements_Redux-' + LatestVersion + '.zip';
-      AddToDownloadList(LatestReleaseURL, '', ExpandConstant('{tmp}\EVE-' + LatestVersion + '.zip'));
-    end;
+    AddToDownloadList('Gameslinx/Tessellation', '', ExpandConstant('{tmp}\Parallax-' + LatestVersion + '.zip'));
+    AddToDownloadList('Gameslinx/Tessellation', '', ExpandConstant('{tmp}\Parallax_ScatterTextures-' + LatestVersion + '.zip'));
   end;
 
-  // Download Parallax and Parallax_ScatterTextures
-  LatestVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
-  if LatestVersion <> '' then
-  begin
-    ParallaxURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + LatestVersion + '/Parallax-' + LatestVersion + '.zip';
-    ParallaxScatterTexturesURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + LatestVersion + '/Parallax_ScatterTextures-' + LatestVersion + '.zip';
-
-    AddToDownloadList(ParallaxURL, '', ExpandConstant('{tmp}\Parallax-' + LatestVersion + '.zip'));
-    AddToDownloadList(ParallaxScatterTexturesURL, '', ExpandConstant('{tmp}\Parallax_ScatterTextures-' + LatestVersion + '.zip'));
-  end;
+  LogDownloadListDetails;  // Log download details
 end;
 
-procedure DownloadAndExtractFiles;
-// Downloads and extracts the files listed in the download list.
-// Ensures all required files are available and extracted.
-var
-  I: Integer;
-  ResultStr: String;
+procedure DownloadProc;
 begin
-  Log('Starting download process for all assets');
-
-  // Initiate download for all files added to the queue
+  Log('Starting download process...');
   ITD_DownloadAfter(wpReady);
-
-  // Get the download result
-  ResultStr := ITD_GetString(ITDS_TitleCaption);  // Or any other appropriate method to get the result
-
-  // Check download result
-  if ResultStr = '0' then  // Assuming '0' indicates success
-  begin
-    Log('All assets downloaded successfully. Extracting files...');
-    for I := 0 to DownloadList.Count - 1 do
-    begin
-      // Extract the downloaded file (assuming 7zip extraction)
-      if Extract7Zip(ExpandConstant('{tmp}\') + ExtractFileName(DownloadList[I]), ExpandConstant('{tmp}')) then
-      begin
-        Log('Extraction completed for ' + DownloadList[I]);
-      end
-      else
-      begin
-        Log('Failed to extract ' + DownloadList[I]);
-      end;
-    end;
-    Log('All files extracted successfully.');
-  end
-  else
-  begin
-    Log('Failed to download assets. Error: ' + ResultStr);
-  end;
-end;
-
-procedure InitializeAndDownload;
-// Runs initialization and download procedures in sequence.
-begin
-  InitializeDownloadList;
-  DownloadAndExtractFiles;
-
-  // Clean up download list
-  DownloadList.Free;
-end;
-
-procedure VerifyDownloadAndExtraction;
-// Verifies that all files have been downloaded and extracted successfully.
-var
-  I: Integer;
-  Entry, URL, TempFile: string;
-  DelimiterPos: Integer;
-begin
-  Log('Verifying downloaded and extracted files...');
-
-  for I := 0 to DownloadList.Count - 1 do
-  begin
-    // Extract the entire entry from DownloadList
-    Entry := DownloadList[I];
-
-    // Find the position of the '=' delimiter
-    DelimiterPos := Pos('=', Entry);
-
-    // Ensure the delimiter is found and extract URL and TempFile
-    if DelimiterPos > 0 then
-    begin
-      URL := Trim(Copy(Entry, 1, DelimiterPos - 1));
-      TempFile := Trim(Copy(Entry, DelimiterPos + 1, Length(Entry) - DelimiterPos));
-    end
-    else
-    begin
-      Log('Invalid entry in DownloadList: ' + Entry);
-      Exit; // Exit procedure early if any entry is invalid
-    end;
-
-    // Expand any constants in TempFile path
-    TempFile := ExpandConstant(TempFile);
-
-    // Check if the file exists
-    if not FileExists(TempFile) then
-    begin
-      Log('Error: File not found after extraction: ' + TempFile);
-      Exit; // Exit procedure early if any file is missing
-    end;
-  end;
-
-  Log('All files verified to be downloaded and extracted successfully.');
 end;
 
 procedure MoveGameData(SourceDir, DestDir: string);
@@ -1464,18 +1468,6 @@ begin
   Log('Folders removal completed.');
 end;
 
-procedure LogDownloadList;
-// Logs the contents of the DownloadList to the log file.
-var
-  I: Integer;
-begin
-  Log('DownloadList Contents:');
-  for I := 0 to DownloadList.Count - 1 do
-  begin
-    Log('Download item ' + IntToStr(I) + ': ' + DownloadList[I]);
-  end;
-end;
-
 procedure InitializeDownloadsDir;
 // Sets the directory for downloading files.
 begin
@@ -1483,36 +1475,147 @@ begin
   Log('Downloads directory initialized: ' + DownloadsDir);
 end;
 
+procedure ExtractProc;
+var
+  I: Integer;
+  Entry, TempFile: string;
+begin
+  for I := 0 to DownloadList.Count - 1 do
+  begin
+    Entry := DownloadList[I];
+    TempFile := Trim(Copy(Entry, Pos('=', Entry) + 1, Length(Entry)));
+    if Extract7Zip(ExpandConstant('{tmp}\') + ExtractFileName(TempFile), ExpandConstant('{app}')) then
+    begin
+      Log('Extraction completed for ' + TempFile);
+    end
+    else
+    begin
+      Log('Failed to extract ' + TempFile);
+    end;
+  end;
+end;
+
+procedure VerifyDownloadCompletion;
+var
+  I: Integer;
+  Entry, TempFile: string;
+  AllFilesDownloaded: Boolean;
+begin
+  AllFilesDownloaded := True;
+  for I := 0 to DownloadList.Count - 1 do
+  begin
+    Entry := DownloadList[I];
+    TempFile := Trim(Copy(Entry, Pos('=', Entry) + 1, Length(Entry)));
+    if not FileExists(ExpandConstant('{tmp}\') + ExtractFileName(TempFile)) then
+    begin
+      Log('Error: File not downloaded: ' + TempFile);
+      AllFilesDownloaded := False;
+    end;
+  end;
+
+  if not AllFilesDownloaded then
+  begin
+    MsgBox('One or more files failed to download. Please check the logs for details.', mbError, MB_OK);
+    Exit;
+  end;
+
+  Log('All files downloaded successfully.');
+end;
+
+procedure VerifyDownloadAndExtraction;
+var
+  I: Integer;
+  Entry, TempFile: string;
+  SkippedFiles: TStringList;
+  SkippedFilesMessage: string;
+begin
+  SkippedFiles := TStringList.Create;
+  try
+    for I := 0 to DownloadList.Count - 1 do
+    begin
+      Entry := DownloadList[I];
+      TempFile := Trim(Copy(Entry, Pos('=', Entry) + 1, Length(Entry)));
+      TempFile := ExpandConstant(TempFile);
+
+      if not FileExists(TempFile) then
+      begin
+        Log('Error: File not found after extraction: ' + TempFile);
+        SkippedFiles.Add(TempFile);
+      end;
+    end;
+
+    if SkippedFiles.Count > 0 then
+    begin
+      Log('The following files were skipped:');
+      SkippedFilesMessage := 'The following files were skipped during the download and extraction process:'#13#10;
+      for I := 0 to SkippedFiles.Count - 1 do
+      begin
+        Log(SkippedFiles[I]);
+        SkippedFilesMessage := SkippedFilesMessage + SkippedFiles[I] + #13#10;
+      end;
+      MsgBox(SkippedFilesMessage, mbError, MB_OK);
+    end
+    else
+    begin
+      Log('All files verified to be downloaded and extracted successfully.');
+    end;
+  finally
+    SkippedFiles.Free;
+  end;
+end;
+
+procedure OnDownloadComplete;
+begin
+  try
+    VerifyDownloadCompletion;
+    ExtractProc;
+    VerifyDownloadAndExtraction;
+    Log('Download and extraction process completed');
+    MergeGameDataFolders;
+    Log('GameData folders merged successfully.');
+  except
+    Log('Post-download steps failed: Unexpected error occurred.');
+    MsgBox('Post-download steps failed. Please check the logs for details.', mbError, MB_OK);
+    Exit;
+  end;
+end;
+
+procedure DownloadAndExtractFiles;
+begin
+  Log('Starting download and extraction process');
+
+  // Initialize download list
+  InitializeDownloadList;
+
+  // Log details of files being downloaded
+  LogDownloadListDetails;
+
+  // The actual download and extraction is now handled in StartInstallation
+end;
+
 procedure StartInstallation;
-// Manages the entire installation process.
 begin
   Log('Starting RSS Reborn installation process.');
-
-  // Clear the download directory
   InitializeDownloadsDir;
-
-  // Check RP-1 installation confirmation
   if not RP1Checkbox.Checked then
   begin
     Log('RP-1 installation confirmation failed. Aborting installation.');
     MsgBox('You must have RP-1 installed and launched at least once before proceeding.', mbError, MB_OK);
-    WizardForm.Close; // Close the wizard to terminate installation
+    WizardForm.Close;
     Exit;
   end;
-
-  // Remove specified folders
-  Log('Removing obsolete folders.');
   RemoveObsoleteFolders;
-
-  // Initialize and start downloading
-  Log('Starting download process.');
-  LogDownloadList; 
-  InitializeAndDownload;
-  Log('Finished downloading.');
-
-  // Merge the GameData folders
-  MergeGameDataFolders;
-  Log('GameData folders merged successfully.');
+  InitializeDownloadList;
+  LogDownloadListDetails;
+  try
+    Log('Calling ITD_DownloadAfter to initiate download process.');
+    ITD_DownloadAfter(wpReady);
+    OnDownloadComplete;
+  except
+    Log('ITD_DownloadAfter failed: Unexpected error occurred.');
+    MsgBox('Failed to start download process. Please check the logs for details.', mbError, MB_OK);
+    Exit;
+  end;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -1539,28 +1642,45 @@ begin
       Exit;
     end;
     Log('KSP directory set to: ' + KSP_DIR);
+  end
+  else if (CurPageID = wpReady) then
+  begin
+    // This will ensure downloads start when moving to the ready page
+    Log('Ready to install. Initializing download process.');
+    StartInstallation;
   end;
 end;
-	
+
 procedure CurPageChanged(CurPageID: Integer);
-// Logs and manages actions when the current page of the wizard changes.
-// Prepares the installer for subsequent steps.
 begin
   Log('Current page changed, CurPageID: ' + IntToStr(CurPageID));
   if CurPageID = wpReady then
   begin
     Log('Preparing to start the installation process.');
-    // Additional logic to prepare the installation, if any, can be added here
+    StartInstallation; // Initiate the installation process including downloads
   end;
 end;
-
+	
 procedure CurStepChanged(CurStep: TSetupStep);
-// Manages transitions between installation steps.
 begin
   Log('Current step changed, CurStep: ' + IntToStr(Ord(CurStep)));
   if CurStep = ssInstall then
   begin
     Log('Starting the installation process.');
-    StartInstallation;
-  end
+
+    ITD_DownloadFiles; // Start the download process
+
+    // Verify download completion
+    VerifyDownloadCompletion;
+
+    // Extract downloaded files
+    ExtractProc;
+
+    // Verify extraction
+    VerifyDownloadAndExtraction;
+
+    // Post-download steps
+    MergeGameDataFolders;
+    CleanupTemporaryFiles;
+  end;
 end;
