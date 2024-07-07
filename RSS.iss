@@ -143,15 +143,20 @@ begin
   Result := FreeSpace >= RequiredSpace;
 end;
 
-procedure LogDownloadList;
+procedure LogDownloadListDetails;
 var
   I: Integer;
+  Entry, URL, FileName: string;
 begin
-  Log('DownloadList Contents:');
+  Log('Listing all files to be downloaded and their URLs:');
   for I := 0 to DownloadList.Count - 1 do
   begin
-    Log('Download item ' + IntToStr(I) + ': ' + DownloadList[I]);
+    Entry := DownloadList[I];
+    URL := Copy(Entry, 1, Pos('=', Entry) - 1);
+    FileName := Copy(Entry, Pos('=', Entry) + 1, Length(Entry));
+    Log('File: ' + FileName + ' URL: ' + URL);
   end;
+  Log('Files will be downloaded to: ' + DownloadsDir);
 end;
 
 function InitializeSetup: Boolean;
@@ -566,7 +571,7 @@ begin
           end;
         end;
 
-        CachedReleaseInfo.Add(Repo + '=' + LatestReleaseJSON);
+        CachedReleaseInfo.Add(Repo + '=' + LatestReleaseJSON); // Cache the JSON response
       end
       else
       begin
@@ -591,6 +596,18 @@ begin
       Log('Exception occurred while fetching latest release info: ' + GetExceptionMessage);
     end;
   end;
+end;
+
+procedure FetchAndCacheRepoInfo(Repo: string);
+begin
+  if GetCachedJSONForRepo(Repo) = '' then
+  begin
+    Log('Fetching latest release info for ' + Repo);
+    GetLatestReleaseHTTPInfo(Repo);
+    CachedReleaseInfo.Add(Repo + '=' + LatestReleaseJSON); // Cache the JSON response
+  end
+  else
+    Log('Using cached release info for ' + Repo);
 end;
 
 function GetLatestReleaseAssets(Repo, Resolution: string; var Version: string; var Size: string): string;
@@ -772,6 +789,9 @@ begin
     BodyVersions[I] := LatestReleaseVersion;
     BodySizes[I] := GetFileSizeForLatestReleaseFromAssets(LatestReleaseAssetsJSON);
 
+    if Assigned(AssetDataList[I]) then
+      AssetDataList[I].Free; // Free previously assigned TStringList
+
     AssetDataList[I] := TStringList.Create;
     AssetDataList[I].Text := LatestReleaseAssetsJSON;
   end;
@@ -915,22 +935,6 @@ begin
   end;
 end;
 
-procedure LogDownloadListDetails;
-var
-  I: Integer;
-  Entry, URL, FileName: string;
-begin
-  Log('Listing all files to be downloaded and their URLs:');
-  for I := 0 to DownloadList.Count - 1 do
-  begin
-    Entry := DownloadList[I];
-    URL := Copy(Entry, 1, Pos('=', Entry) - 1);
-    FileName := Copy(Entry, Pos('=', Entry) + 1, Length(Entry));
-    Log('File: ' + FileName + ' URL: ' + URL);
-  end;
-  Log('Files will be downloaded to: ' + ExpandConstant('{tmp}'));
-end;
-
 function CheckRP1Confirmation: Boolean;
 // Ensures the user has installed RP-1 before proceeding.
 begin
@@ -1004,6 +1008,12 @@ begin
   
   // Read GitHub access token from the registry
   MyAccessToken := ReadGitHubAccessToken;
+
+  // Fetch and cache release info
+  for I := 0 to High(BodyRepos) do
+  begin
+    FetchAndCacheRepoInfo(BodyRepos[I]);
+  end;
 
   RetrieveBodyInfo;
 
@@ -1142,59 +1152,13 @@ begin
   end;
 end;
 
-procedure AddToDownloadList(RepoName, Resolution, TempFileName: string);
+function GetRepoDownloadURLs(Repo, Resolution: string): TStringList;
 var
   AssetName, BrowserDownloadURL: string;
   I, J, StartPos: Integer;
+  AssetURLs: TStringList;
 begin
-  LatestReleaseAssetsJSON := GetCachedJSONForRepo(RepoName);
-  if LatestReleaseAssetsJSON = '' then
-  begin
-    GetLatestReleaseHTTPInfo(RepoName);
-    LatestReleaseAssetsJSON := LatestReleaseAssetsJSON; // Ensure this stores the correct JSON
-  end;
-
-  StartPos := 1;
-  while StartPos > 0 do
-  begin
-    I := PosEx('"name":"', LatestReleaseAssetsJSON, StartPos);
-    if I > 0 then
-    begin
-      I := I + Length('"name":"');
-      J := FindNextQuote(LatestReleaseAssetsJSON, I);
-      if J > 0 then
-      begin
-        AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
-        if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
-        begin
-          I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
-          if I > 0 then
-          begin
-            I := I + Length('"browser_download_url":"');
-            J := FindNextQuote(LatestReleaseAssetsJSON, I);
-            if J > 0 then
-            begin
-              BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
-              Log('Adding to download list: ' + BrowserDownloadURL + ' as ' + TempFileName);
-              DownloadList.Add(BrowserDownloadURL + '=' + TempFileName);
-              ITD_AddFile(BrowserDownloadURL, TempFileName);
-            end;
-          end;
-        end;
-        StartPos := J + 1;
-      end;
-    end
-    else
-      Break;
-  end;
-end;
-
-function GetRepoDownloadURL(Repo, Resolution: string): string;
-var
-  AssetName, BrowserDownloadURL: string;
-  I, J, StartPos: Integer;
-begin
-  Result := '';
+  Result := TStringList.Create;
   LatestReleaseAssetsJSON := GetCachedJSONForRepo(Repo);
   if LatestReleaseAssetsJSON = '' then
   begin
@@ -1223,8 +1187,12 @@ begin
             if J > 0 then
             begin
               BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
-              Result := BrowserDownloadURL;
-              Exit;
+              Result.Add(BrowserDownloadURL);
+              // Check for multi-part files and add them to the list
+              while FileExists(AssetName + '.7z.' + Format('%.3d', [Result.Count + 1])) do
+              begin
+                Result.Add(BrowserDownloadURL + '.7z.' + Format('%.3d', [Result.Count + 1]));
+              end;
             end;
           end;
         end;
@@ -1236,111 +1204,94 @@ begin
   end;
 end;
 
+procedure AddToDownloadList(RepoName, Resolution, DestFilePath: string);
+var
+  DownloadURLs: TStringList;
+  BrowserDownloadURL: string;
+  I, J: Integer;
+  URLExists: Boolean;
+begin
+  DownloadURLs := GetRepoDownloadURLs(RepoName, Resolution);
+
+  for I := 0 to DownloadURLs.Count - 1 do
+  begin
+    BrowserDownloadURL := DownloadURLs[I];
+    
+    // Check if the file is already in the download list
+    URLExists := False;
+    for J := 0 to DownloadList.Count - 1 do
+    begin
+      if Pos(BrowserDownloadURL, DownloadList[J]) > 0 then
+      begin
+        URLExists := True;
+        Break;
+      end;
+    end;
+
+    if not URLExists then
+    begin
+      Log('Adding to download list: ' + BrowserDownloadURL + ' as ' + DestFilePath);
+      DownloadList.Add(BrowserDownloadURL + '=' + DestFilePath);
+      ITD_AddFile(BrowserDownloadURL, DestFilePath);
+    end
+    else
+    begin
+      Log('Skipping already added URL: ' + BrowserDownloadURL);
+    end;
+  end;
+
+  DownloadURLs.Free;
+end;
+
 procedure InitializeDownloadList;
 var
-  LatestVersion, LatestReleaseURL: string;
+  LatestVersion: string;
+  ParallaxURL, ParallaxScatterTexturesURL: string;
+  Resolution: string;
   I: Integer;
 begin
-  Log('Initializing download list');
-  ITD_ClearFiles;
+  DownloadList := TStringList.Create;
 
-  // RSS Configs
-  LatestReleaseURL := GetRepoDownloadURL('RSS-Reborn/RSS-Configs', '');
-  if LatestReleaseURL <> '' then
-    AddToDownloadList('RSS-Reborn/RSS-Configs', '', DownloadsDir + '\RSS_Configs.7z');
+  // RSS-Terrain
+  AddToDownloadList('RSS-Reborn/RSS-Terrain', '', ExpandConstant('{tmp}\RSS_Terrain.7z'));
 
-  // RSS Terrain
-  LatestReleaseURL := GetRepoDownloadURL('RSS-Reborn/RSS-Terrain', '');
-  if LatestReleaseURL <> '' then
-    AddToDownloadList('RSS-Reborn/RSS-Terrain', '', DownloadsDir + '\RSS_Terrain.7z');
+  // RSS-Configs
+  AddToDownloadList('RSS-Reborn/RSS-Configs', '', ExpandConstant('{tmp}\RSS_Configs.7z'));
 
-  // Bodies
+  // Planetary textures at user-selected resolutions
   for I := 0 to High(BodyRepos) do
   begin
     Resolution := ResolutionCombos[I].Text;
-    LatestReleaseAssetsJSON := GetCachedJSONForRepo(BodyRepos[I]);
-    if LatestReleaseAssetsJSON = '' then
-    begin
-      GetLatestReleaseHTTPInfo(BodyRepos[I]);
-      LatestReleaseAssetsJSON := LatestReleaseAssetsJSON;
-    end;
-    LatestVersion := BodyVersions[I];
-
-    AddToDownloadList(BodyRepos[I], Resolution, DownloadsDir + '\' + ExtractBodyName(BodyRepos[I]) + '_' + Resolution + '.7z');
+    AddToDownloadList(BodyRepos[I], Resolution, ExpandConstant('{tmp}\') + ExtractBodyName(BodyRepos[I]) + '_' + Resolution + '.7z');
   end;
 
-  // RSSVE Configs
+  // RSSVE-Configs (if EVE and Scatterer are installed)
   if not EVEAndScattererCheckbox.Checked then
-  begin
-    LatestReleaseURL := GetRepoDownloadURL('RSS-Reborn/RSSVE-Configs', '');
-    if LatestReleaseURL <> '' then
-      AddToDownloadList('RSS-Reborn/RSSVE-Configs', '', DownloadsDir + '\RSSVE_Configs.7z');
-  end;
+    AddToDownloadList('RSS-Reborn/RSSVE-Configs', '', ExpandConstant('{tmp}\RSSVE_Configs.7z'));
 
-  // RSSVE Textures
-  LatestReleaseURL := GetRepoDownloadURL('RSS-Reborn/RSSVE-Textures', '');
-  if LatestReleaseURL <> '' then
-    AddToDownloadList('RSS-Reborn/RSSVE-Textures', '', DownloadsDir + '\RSSVE_Textures.7z');
+  // RSSVE-Textures
+  if not EVEAndScattererCheckbox.Checked then
+  AddToDownloadList('RSS-Reborn/RSSVE-Textures', '', ExpandConstant('{tmp}\RSSVE_Textures.7z'));
 
-  // Scatterer
+  // Scatterer (if not already downloaded by user)
   if not ScattererDownloaded then
-  begin
-    LatestReleaseURL := GetRepoDownloadURL('LGhassen/Scatterer', '');
-    if LatestReleaseURL <> '' then
-      AddToDownloadList('LGhassen/Scatterer', '', DownloadsDir + '\Scatterer.zip');
-  end;
+    AddToDownloadList('yourusername/Scatterer', '', ExpandConstant('{tmp}\Scatterer.zip'));
 
-  // EVE
+  // EVE (if not already downloaded by user)
   if not EVEDownloaded then
-  begin
-    LatestReleaseURL := GetRepoDownloadURL('LGhassen/EnvironmentalVisualEnhancements', '');
-    if LatestReleaseURL <> '' then
-      AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', DownloadsDir + '\Environmental_Visual_Enhancements_Redux-' + LatestVersion + '.zip');
-  end;
+    AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', ExpandConstant('{tmp}\EVE.zip'));
 
-  // Kopernicus
-  LatestReleaseURL := GetRepoDownloadURL('ballisticfox/Kopernicus', '');
-  if LatestReleaseURL <> '' then
-    AddToDownloadList('ballisticfox/Kopernicus', '', DownloadsDir + '\' + ExtractFileName(LatestReleaseURL));
-
-  // Parallax
-  LatestReleaseURL := GetRepoDownloadURL('Gameslinx/Tessellation', '');
-  if LatestReleaseURL <> '' then
+  // Download Parallax and Parallax_ScatterTextures
+  LatestVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
+  if LatestVersion <> '' then
   begin
-    AddToDownloadList('Gameslinx/Tessellation', '', DownloadsDir + '\Parallax-' + LatestVersion + '.zip');
-    AddToDownloadList('Gameslinx/Tessellation', '', DownloadsDir + '\Parallax_ScatterTextures-' + LatestVersion + '.zip');
-  end;
-
-  LogDownloadListDetails;  // Log download details
-end;
-
-procedure MoveGameData(SourceDir, DestDir: string);
-// Moves game data files from the temporary directory to the game directory.
-var
-  ResultCode: Integer;
-begin
-  // Ensure the destination directory exists
-  if not DirExists(DestDir) then
-  begin
-    if not CreateDir(DestDir) then
-    begin
-      Log(Format('Failed to create directory: %s', [DestDir]));
-      Exit;
-    end;
-  end;
-	
-	Log(Format('Moving game data from %s to %s', [SourceDir, DestDir]));
-
-  // Move all files and directories from SourceDir to DestDir
-  if not Exec('cmd.exe', '/C move "' + SourceDir + '\*" "' + DestDir + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-  begin
-    Log(Format('Failed to move files from %s to %s', [SourceDir, DestDir]));
-  end
-  else if ResultCode <> 0 then
-  begin
-    Log(Format('Move command failed with code %d', [ResultCode]));
+    ParallaxURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + LatestVersion + '/Parallax-' + LatestVersion + '.zip';
+    ParallaxScatterTexturesURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + LatestVersion + '/Parallax_ScatterTextures-' + LatestVersion + '.zip';
+    AddToDownloadList('Gameslinx/Tessellation', '', ExpandConstant('{tmp}\Parallax-' + LatestVersion + '.zip'));
+    AddToDownloadList('Gameslinx/Tessellation', '', ExpandConstant('{tmp}\Parallax_ScatterTextures-' + LatestVersion + '.zip'));
   end;
 end;
+
 
 procedure MergeGameDataFolders;
 var
@@ -1363,7 +1314,7 @@ begin
 
   Log('Merging GameData folders');
   DestDir := ExpandConstant('{userdesktop}\MergedGameData');
-  
+
   for I := 0 to DownloadList.Count - 1 do
   begin
     SourceDir := ExpandConstant('{tmp}') + '\' + ExtractFileNameWithoutExt(DownloadList[I]) + '\GameData';
@@ -1371,7 +1322,6 @@ begin
     if DirExists(SourceDir) then
     begin
       Log('Directory exists: ' + SourceDir + '. Moving to ' + DestDir);
-      MoveGameData(SourceDir, DestDir);
     end
     else
     begin
@@ -1557,11 +1507,8 @@ procedure OnDownloadComplete;
 begin
   try
     VerifyDownloadCompletion;
-    ExtractProc;
     VerifyDownloadAndExtraction;
     Log('Download and extraction process completed');
-    MergeGameDataFolders;
-    Log('GameData folders merged successfully.');
   except
     Log('Post-download steps failed: Unexpected error occurred.');
     MsgBox('Post-download steps failed. Please check the logs for details.', mbError, MB_OK);
@@ -1581,8 +1528,6 @@ begin
     Exit;
   end;
   RemoveObsoleteFolders;
-  InitializeDownloadList;
-  LogDownloadListDetails;
   try
     Log('Calling ITD_DownloadAfter to initiate download process.');
     OnDownloadComplete;
@@ -1646,7 +1591,6 @@ begin
   Result := True;
   try
     InitializeDownloadsDir;
-    RemoveObsoleteFolders;
     InitializeDownloadList;
     LogDownloadListDetails;
   except
