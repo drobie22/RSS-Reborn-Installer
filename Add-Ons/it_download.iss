@@ -1,5 +1,5 @@
 [Files]
-Source: {#emit ReadReg(HKEY_LOCAL_MACHINE,'Software\Sherlock Software\InnoTools\Downloader','InstallPath','')}\itdownload.dll; Flags: dontcopy; DestDir: {tmp}
+Source: Add-Ons\itdownload.dll; Flags: dontcopy
 
 [Code]
 
@@ -194,8 +194,12 @@ begin
 end;
 
 procedure ITD_NowDoDownload(sender: TWizardPage);
-var err: integer;
+var
+  err: integer;
+  resultLen: integer;
+  resultMsg: string;
 begin
+  Log('Starting download process');
   wizardform.backbutton.enabled := false;
   wizardform.nextbutton.enabled := false;
 
@@ -203,41 +207,49 @@ begin
   sender.description := ITD_GetString(ITDS_TitleDescription);
 
   err := ITD_Internal_DownloadFiles(sender.surface.handle);
+  Log('Download process finished with error code: ' + IntToStr(err));
+
+  resultLen := ITD_GetResultLen();
+  SetLength(resultMsg, resultLen);
+  ITD_GetResultString(PChar(resultMsg), resultLen);
+  Log('Download result message: ' + resultMsg);
 
   case err of
     ITDERR_SUCCESS: begin
-        wizardform.nextbutton.enabled := true;
-        wizardform.nextbutton.onclick(nil);
+      wizardform.nextbutton.enabled := true;
+      wizardform.nextbutton.onclick(nil);
 
-        if itd_aftersuccess <> nil then
-          itd_aftersuccess(sender);
-      end;
-    ITDERR_USERCANCEL: ; //Don't show a message, this happens on setup close and cancel click
+      if itd_aftersuccess <> nil then
+        itd_aftersuccess(sender);
+    end;
+    ITDERR_USERCANCEL: ; // Don't show a message, this happens on setup close and cancel click
   else begin
-    //Some unexpected error, like connection interrupted
-      wizardform.backbutton.caption := ITD_GetString(ITDS_Retry);
-      wizardform.backbutton.enabled := true;
-      wizardform.backbutton.show();
-      itd_retryonback := true;
+    // Some unexpected error, like connection interrupted
+    wizardform.backbutton.caption := ITD_GetString(ITDS_Retry);
+    wizardform.backbutton.enabled := true;
+    wizardform.backbutton.show();
+    itd_retryonback := true;
 
-      wizardform.nextbutton.enabled := itd_allowcontinue;
+    wizardform.nextbutton.enabled := itd_allowcontinue;
 
-      if ITD_EventHandler <> nil then
-        ITD_EventHandler(ITD_Event_DownloadFailed);
+    if ITD_EventHandler <> nil then
+      ITD_EventHandler(ITD_Event_DownloadFailed);
 
-      if itd_allowcontinue then begin //Download failed, we can retry, continue, or exit
-        sender.caption := ITD_GetString(ITDS_DownloadFailed);
-        sender.description := ITD_GetString(ITDS_MessageFailRetryContinue);
+    if itd_allowcontinue then begin
+      // Download failed, we can retry, continue, or exit
+      sender.caption := ITD_GetString(ITDS_DownloadFailed);
+      sender.description := ITD_GetString(ITDS_MessageFailRetryContinue);
 
-        MsgBox(ITD_GetString(ITDS_MessageFailRetryContinue), mbError, MB_OK)
-      end else begin //Download failed, we must retry or exit setup
-        sender.caption := ITD_GetString(ITDS_DownloadFailed);
-        sender.description := ITD_GetString(ITDS_MessageFailRetry);
+      MsgBox(ITD_GetString(ITDS_MessageFailRetryContinue), mbError, MB_OK)
+    end else begin
+      // Download failed, we must retry or exit setup
+      sender.caption := ITD_GetString(ITDS_DownloadFailed);
+      sender.description := ITD_GetString(ITDS_MessageFailRetry);
 
-        MsgBox(ITD_GetString(ITDS_MessageFailRetry), mbError, MB_OK)
-      end;
+      MsgBox(ITD_GetString(ITDS_MessageFailRetry), mbError, MB_OK)
     end;
   end;
+end;
 end;
 
 procedure ITD_HandleShowPage(sender: TWizardPage);
