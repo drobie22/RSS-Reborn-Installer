@@ -1479,42 +1479,37 @@ begin
   end
 end;
 
+function URLDownloadToFile(Caller: Integer; URL: PAnsiChar; FileName: PAnsiChar; Reserved: Integer; StatusCB: Integer): Integer;
+  external 'URLDownloadToFileA@urlmon.dll stdcall';
+
 procedure DownloadAllFiles;
 var
+  URL, Dest, FileName, DownloadItem: String;
   I: Integer;
-  DownloadItem, URL, TempFile, CacheFile: string;
-  HttpCli: Variant;
+  DownloadResult: HRESULT;
 begin
   for I := 0 to DownloadList.Count - 1 do
   begin
     // Extract URL and TempFile from DownloadList
     DownloadItem := DownloadList[I];
     URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
-    TempFile := Copy(DownloadItem, Pos('=', DownloadItem) + 1, Length(DownloadItem));
+		//URL := 'https://www.w3.org/Graphics/GIF/spec-gif89a.txt';
+    FileName := Copy(DownloadItem, Pos('=', DownloadItem) + 1, Length(DownloadItem));
+		//FileName := 'spec-gif89a.txt';
+    Dest := DownloadsDir + '\' + ExtractFileName(FileName);
+    
+    Log('Downloading ' + URL + ' to ' + Dest);
 
-    Log('Downloading ' + URL + ' to ' + TempFile);
-
-    // Define the cache file path
-    CacheFile := AddBackslash(DownloadsDir) + ExtractFileName(TempFile);
-
+    DownloadResult := URLDownloadToFile(0, PAnsiChar(URL), PAnsiChar(Dest), 0, 0);
+    if DownloadResult = S_OK then
     begin
-      try
-        HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
-        HttpCli.Open('GET', URL, False);
-        HttpCli.Send;
-
-        if HttpCli.Status = 200 then
-        begin
-          // Save to the destination
-          HttpCli.ResponseBody.SaveToFile(TempFile, 2);  // 2 means SaveAs in ADODB.Stream
-        end
-        else
-        begin
-          Log('Error downloading file from ' + URL + ', status: ' + IntToStr(HttpCli.Status));
-        end;
-      except
-        Log('Error downloading file from ' + URL);
-      end;
+      Log('Download successful. File saved to: ' + Dest);
+    end
+    else
+    begin
+      Log('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult));
+      MsgBox('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult), mbError, MB_OK);
+      Exit; // Exit on first failure
     end;
   end;
 end;
