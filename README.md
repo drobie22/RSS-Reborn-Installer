@@ -15,6 +15,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 - [Kerbal Space Program](https://www.kerbalspaceprogram.com/)
 - [RP-1 RSS/RO Modpack](https://github.com/KSP-RO/RP-0) (must be installed and launched at least once)
 - [7-Zip](https://www.7-zip.org/download.html) (for extracting files)
+- (Optional) [Blackrack's Volumetric Clouds](https://www.patreon.com/blackrack) If you wish to include this, you must have his EVE and Scatterer zips downloaded to your downloads folder so the installer can grab them. 
 
 ## How to Download and Install
 
