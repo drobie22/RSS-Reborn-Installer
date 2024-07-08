@@ -48,14 +48,14 @@ const
   RSSTexturesRepo = 'RSS-Reborn/RSS-Terrain';
   S_OK = 0;
   URLMON_DLL = 'urlmon.dll';
-	WM_SETTEXT = $000C;
-  
+	
 var
   AssetDataList: array of TStringList;
   BodyRepos: array[0..11] of string;
   BodySizes: array of string;	
 	BodyVersions: array of string;
 	CachedReleaseInfo: TStringList;
+	CurrentFileLabel: TNewStaticText;
   DownloadList: TStringList;
   DownloadsDir: string;
 	EVEAndScattererCheckbox: TNewCheckBox;
@@ -67,7 +67,6 @@ var
 	LatestReleaseJSON: string;
   LatestReleaseVersion: string;
 	MyAccessToken: string;
-  Resolution: string;
   ResolutionCombos: array of TComboBox;
   RP1Checkbox: TNewCheckBox;
 	Sizes: array of Int64;
@@ -139,22 +138,6 @@ begin
   Result := FreeSpace >= RequiredSpace;
 end;
 
-procedure LogDownloadListDetails;
-var
-  I: Integer;
-  Entry, URL, FileName: string;
-begin
-  Log('Listing all files to be downloaded and their URLs:');
-  for I := 0 to DownloadList.Count - 1 do
-  begin
-    Entry := DownloadList[I];
-    URL := Copy(Entry, 1, Pos('=', Entry) - 1);
-    FileName := Copy(Entry, Pos('=', Entry) + 1, Length(Entry));
-    Log('File: ' + FileName + ' URL: ' + URL);
-  end;
-  Log('Files will be downloaded to: ' + DownloadsDir);
-end;
-
 function InitializeSetup: Boolean;
 begin
   Result := True;
@@ -186,6 +169,22 @@ begin
   Log('Downloads directory initialized: ' + DownloadsDir);
 end;
 
+procedure LogDownloadListDetails;
+var
+  I: Integer;
+  Entry, URL, FileName: string;
+begin
+  Log('Listing all files to be downloaded and their URLs:');
+  for I := 0 to DownloadList.Count - 1 do
+  begin
+    Entry := DownloadList[I];
+    URL := Copy(Entry, 1, Pos('=', Entry) - 1);
+    FileName := Copy(Entry, Pos('=', Entry) + 1, Length(Entry));
+    Log('File: ' + FileName + ' URL: ' + URL);
+  end;
+  Log('Files will be downloaded to: ' + DownloadsDir);
+end;
+
 function ReadGitHubAccessToken: string;
 // Reads the GitHub access token from the environment variable if it exists.
 // Allows more downloads per hour
@@ -202,12 +201,6 @@ procedure DeinitializeVariables;
 begin
   DownloadList.Free;
   CachedReleaseInfo.Free; // Free cache
-end;
-
-procedure LogSizeError(Body: String; Size: Int64);
-// Logs an error message for file size overflow.
-begin
-  Log(Format('Overflow detected for %s with size: %d', [Body, Size]));
 end;
 
 function SendMessage(hWnd: LongInt; Msg: LongInt; wParam: LongInt; lParam: LongInt): LongInt;
@@ -298,19 +291,6 @@ begin
       Exit;
     end;
   end;
-end;
-
-function GetSubstringPosition(const SubStr, Str: string; StartPos: Integer): Integer;
-// Helper function
-var
-  TempStr: string;
-begin
-  Log(Format('Finding position of substring "%s" in string "%s" starting from position %d', [SubStr, Str, StartPos]));
-  TempStr := Copy(Str, StartPos, Length(Str) - StartPos + 1);
-  Result := Pos(SubStr, TempStr);
-  if Result <> 0 then
-    Result := Result + StartPos - 1;
-  Log(Format('Substring position found: %d', [Result]));
 end;
 
 function PosEx(const SubStr, S: string; Offset: Integer): Integer;
@@ -471,6 +451,7 @@ var
   HttpCli: Variant;
   I, J: Integer;
   AssetsURL: string;
+  CombinedResponse, CachedData: string;
 begin
   if GetCachedJSONForRepo(Repo, LatestReleaseJSON, LatestReleaseAssetsJSON) then
   begin
@@ -495,48 +476,35 @@ begin
 
     if HttpCli.Status = 200 then
     begin
-      LatestReleaseJSON := HttpCli.ResponseText;
-      if LatestReleaseJSON = '' then
+		  Log('GitHub Call');
+      CombinedResponse := HttpCli.ResponseText;
+      if CombinedResponse = '' then
       begin
         Log('Empty response for latest release info');
         Exit;
       end;
 
-      I := Pos('"tag_name":"', LatestReleaseJSON);
+      LatestReleaseJSON := CombinedResponse;
+      
+      // Parse the JSON response to extract necessary fields and assets
+      I := Pos('"tag_name":"', CombinedResponse);
       if I > 0 then
       begin
         I := I + Length('"tag_name":"');
-        J := FindNextQuote(LatestReleaseJSON, I);
+        J := FindNextQuote(CombinedResponse, I);
         if J > 0 then
-          LatestReleaseVersion := Copy(LatestReleaseJSON, I, J - I);
+          LatestReleaseVersion := Copy(CombinedResponse, I, J - I);
       end;
 
-      I := Pos('"assets_url":"', LatestReleaseJSON);
+      I := Pos('"assets":[', CombinedResponse);
       if I > 0 then
       begin
-        I := I + Length('"assets_url":"');
-        J := FindNextQuote(LatestReleaseJSON, I);
-        if J > 0 then
-        begin
-          AssetsURL := Copy(LatestReleaseJSON, I, J - I);
-          HttpCli.Open('GET', AssetsURL, False);
-          HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
-          if MyAccessToken <> '' then
-            HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
-
-          HttpCli.Send;
-          if HttpCli.Status = 200 then
-          begin
-            LatestReleaseAssetsJSON := HttpCli.ResponseText;
-            if LatestReleaseAssetsJSON = '' then
-              Log('No assets found for the latest release');
-          end
-          else
-            Log('Failed to fetch assets info, status: ' + IntToStr(HttpCli.Status));
-        end;
+        J := PosEx(']', CombinedResponse, I) + 1;
+        LatestReleaseAssetsJSON := Copy(CombinedResponse, I, J - I);
       end;
 
-      CachedReleaseInfo.Add(Repo + '=' + LatestReleaseJSON + '|' + LatestReleaseAssetsJSON); // Cache the JSON responses
+      CachedData := Repo + '=' + LatestReleaseJSON + '|' + LatestReleaseAssetsJSON;
+      CachedReleaseInfo.Add(CachedData); // Cache the combined JSON responses
     end
     else
     begin
@@ -947,9 +915,6 @@ begin
 
   RetrieveBodyInfo;
 
-  DownloadsDir := ExpandConstant('{userdocs}\Desktop');
-  Log('Downloads directory initialized: ' + DownloadsDir);
-
   RP1Checkbox := TNewCheckBox.Create(WizardForm);
   RP1Checkbox.Parent := WizardForm.WelcomePage;
   RP1Checkbox.Left := ScaleX(18);
@@ -977,9 +942,15 @@ begin
 
   Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
   wpSelectResolutions := Page.ID;
-	
-  DownloadPage := CreateOutputProgressPage('Downloading Files', 'Please wait while the necessary files are being downloaded.');
 
+  DownloadPage := CreateOutputProgressPage('Downloading Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
+  CurrentFileLabel := TNewStaticText.Create(DownloadPage);
+  CurrentFileLabel.Parent := DownloadPage.Surface;
+  CurrentFileLabel.Left := ScaleX(8);
+  CurrentFileLabel.Top := ScaleY(70);
+  CurrentFileLabel.Width := DownloadPage.SurfaceWidth - ScaleX(16);
+  CurrentFileLabel.Caption := 'Initializing download...';
+	
   WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(0);
   WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(0);
 
@@ -1039,43 +1010,12 @@ begin
   Log('Wizard initialization completed');
 end;
 
-procedure MoveDownloadedEVEAndScatterer;
-// If user has paid for Volumentric Clouds, installer takes the zips from the downloads folder
-begin
-  try
-    Log('Moving downloaded EVE and Scatterer files');
 
-    if FileExists(DownloadsDir + '\EnvironmentalVisualEnhancements.zip') then
-    begin
-      Log('Extracting EnvironmentalVisualEnhancements.zip');
-      Extract7Zip(DownloadsDir + '\EnvironmentalVisualEnhancements.zip', KSP_DIR);
-    end
-    else
-    begin
-      Log('EnvironmentalVisualEnhancements.zip not found');
-    end;
-
-    if FileExists(DownloadsDir + '\Scatterer.zip') then
-    begin
-      Log('Extracting Scatterer.zip');
-      Extract7Zip(DownloadsDir + '\Scatterer.zip', KSP_DIR);
-    end
-    else
-    begin
-      Log('Scatterer.zip not found');
-    end;
-
-    Log('Extraction completed');
-  except
-    Log('Failed to move downloaded EVE and Scatterer files. Exception: ' + GetExceptionMessage);
-  end;
-end;
 
 function GetRepoDownloadURLs(Repo, Resolution: string): TStringList;
 var
   AssetName, BrowserDownloadURL: string;
   I, J, StartPos: Integer;
-  AssetURLs: TStringList;
   ReleaseJSON, AssetsJSON: string;
 begin
   Result := TStringList.Create;
@@ -1270,14 +1210,6 @@ begin
   end
   else
     Log('No temporary files found to clean up in ' + TempDir);
-end;
-
-procedure DeinitializeSetup;
-// Cleans up resources and temporary files after installation.
-begin
-  Log('Deinitializing setup and cleaning up resources');  // Ensure complete logging
-  CleanupTemporaryFiles;
-  DeinitializeVariables;
 end;
 
 procedure RemoveObsoleteFolders;
@@ -1479,6 +1411,17 @@ begin
   end
 end;
 
+procedure ClearDownloadDirectory;
+begin;
+	if DirectoryExists(DownloadsDir) then
+    if not DelTree(DownloadsDir, True, True, True) then
+      Log('Failed to delete Downloads directory.')
+    else
+      Log('DownloadsDir directory deleted.')
+  else
+    Log('DownloadsDir directory does not exist.');
+end;
+
 function URLDownloadToFile(Caller: Integer; URL: PAnsiChar; FileName: PAnsiChar; Reserved: Integer; StatusCB: Integer): Integer;
   external 'URLDownloadToFileA@urlmon.dll stdcall';
 
@@ -1488,19 +1431,23 @@ var
   I: Integer;
   DownloadResult: HRESULT;
 begin
+	DownloadPage.SetProgress(0, DownloadList.Count);
   for I := 0 to DownloadList.Count - 1 do
   begin
+    DownloadPage.SetProgress(I, DownloadList.Count);
     // Extract URL and TempFile from DownloadList
     DownloadItem := DownloadList[I];
     URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
-		//URL := 'https://www.w3.org/Graphics/GIF/spec-gif89a.txt';
     FileName := Copy(DownloadItem, Pos('=', DownloadItem) + 1, Length(DownloadItem));
-		//FileName := 'spec-gif89a.txt';
+
+    // Ensure the correct destination path
     Dest := DownloadsDir + '\' + ExtractFileName(FileName);
-    
+
+    CurrentFileLabel.Caption := 'Downloading: ' + Dest;
     Log('Downloading ' + URL + ' to ' + Dest);
 
     DownloadResult := URLDownloadToFile(0, PAnsiChar(URL), PAnsiChar(Dest), 0, 0);
+    Log('GitHub Call');
     if DownloadResult = S_OK then
     begin
       Log('Download successful. File saved to: ' + Dest);
@@ -1512,6 +1459,7 @@ begin
       Exit; // Exit on first failure
     end;
   end;
+  DownloadPage.SetProgress(DownloadList.Count, DownloadList.Count);
 end;
 
 function InitializeDownloads: Boolean;
@@ -1551,36 +1499,50 @@ begin
   end;
 end;
 
+procedure DeinitializeSetup;
+// Cleans up resources and temporary files after installation.
+begin
+  Log('Deinitializing setup and cleaning up resources');  // Ensure complete logging
+  CleanupTemporaryFiles;
+	ClearDownloadDirectory;
+  DeinitializeVariables;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
   begin
     Log('Install step reached. Starting installation process.');
+    DownloadPage.Show;
+    try
+      // Call modular functions to perform tasks
+      if not InitializeDownloads then
+      begin
+        Log('Failed to initialize downloads.');
+        MsgBox('Failed to initialize downloads. Please check the logs for details.', mbError, MB_OK);
+        Exit;
+      end;
 
-    // Call modular functions to perform tasks
-    if not InitializeDownloads then
-    begin
-      Log('Failed to initialize downloads.');
-      MsgBox('Failed to initialize downloads. Please check the logs for details.', mbError, MB_OK);
-      Exit;
+      DownloadAllFiles;
+
+      if not ExtractFiles then
+      begin
+        Log('Extract files step failed.');
+        MsgBox('Extract files step failed. Please check the logs for details.', mbError, MB_OK);
+        Exit;
+      end;
+
+      if not MergeGameData then
+      begin
+        Log('Merge game data step failed.');
+        MsgBox('Merge game data step failed. Please check the logs for details.', mbError, MB_OK);
+        Exit;
+      end;
+
+      Log('Installation process completed successfully, cleaning up files now');
+			DeinitializeSetup;
+    finally
+      DownloadPage.Hide;
     end;
-
-    DownloadAllFiles;
-
-    if not ExtractFiles then
-    begin
-      Log('Extract files step failed.');
-      MsgBox('Extract files step failed. Please check the logs for details.', mbError, MB_OK);
-      Exit;
-    end;
-
-    if not MergeGameData then
-    begin
-      Log('Merge game data step failed.');
-      MsgBox('Merge game data step failed. Please check the logs for details.', mbError, MB_OK);
-      Exit;
-    end;
-
-    Log('Installation process completed successfully.');
   end;
 end;
