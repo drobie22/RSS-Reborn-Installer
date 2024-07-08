@@ -23,7 +23,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 
 ### Step 1: Download the Installer
 
-1. Go to the [Releases](https://github.com/drobie22/RSS-Reborn/releases) page.
+1. Go to the [Releases](https://github.com/drobie22/RSS-Reborn-Installer/releases) page.
 2. Download the latest version of the `RSS-Reborn-Installer.exe`.
 
 ### Step 2: Run the Installer
