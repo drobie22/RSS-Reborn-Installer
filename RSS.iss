@@ -8,26 +8,25 @@
 #define MyAppURL "https://github.com/RSS-Reborn/RSS-Reborn"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
 
-#include "Add-Ons\it_download.iss"
-
 [Setup]
 AppName={#MyAppName}
+AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-AppVersion={#MyAppVersion}
-BackColor=$cccccc
-Compression=lzma
-CreateAppDir=no
-DisableWelcomePage=no
+DefaultDirName={autopf}\My Program
+DefaultGroupName=My Program
 OutputBaseFilename=RSSRebornInstaller
 SetupLogging=yes
+Compression=lzma
 SolidCompression=yes
 WizardImageFile=images\backgroundearth.bmp
 WizardImageStretch=no
 WizardSmallImageFile=images\icon.bmp
 WizardStyle=modern
+DisableWelcomePage=no
+PrivilegesRequired=admin
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -37,10 +36,8 @@ WelcomeLabel2=This will install RSS Reborn into your default KSP directory.%n%nM
 
 [Files]
 Source: "C:\Program Files\7-Zip\7z.exe"; DestDir: "{tmp}"; Flags: dontcopy;
-Source: "Add-Ons\itdownload.dll"; DestDir: "{tmp}"; Flags: dontcopy;
 Source: "Licenses\license.txt"; DestDir: "{app}"; Flags: dontcopy;
 Source: "Licenses\lgpl-3.0.txt"; DestDir: "{app}"; Flags: dontcopy;
-Source: {#emit ReadReg(HKEY_LOCAL_MACHINE,'Software\Sherlock Software\InnoTools\Downloader','InstallPath','')}\itdownload.dll; Flags: dontcopy; DestDir: {tmp};
 
 [Code]
 const
@@ -63,9 +60,9 @@ var
   DownloadsDir: string;
 	EVEAndScattererCheckbox: TNewCheckBox;
   EVEdownloaded: Boolean;
-	ITDLogFilePath: string;
 	KSP_DIR: string;
   KSPDirPage: TInputDirWizardPage;
+	DownloadPage: TOutputProgressWizardPage;
 	LatestReleaseAssetsJSON: string;
 	LatestReleaseJSON: string;
   LatestReleaseVersion: string;
@@ -102,7 +99,6 @@ begin
   // Set the lengths of the arrays
   SetLength(Sizes, 12);
   SetLength(SizeLabelList, 12);
-  SetLength(ResolutionCombos, 12);
   SetLength(SizesList, 12);
 end;
 
@@ -421,12 +417,13 @@ begin
   Result := IntToStr(Round(SizeInBytes / 1048576)) + ' MB'; // Convert bytes to MB and format
 end;
 
-function GetCachedJSONForRepo(Repo: string): string;
+function GetCachedJSONForRepo(Repo: string; var ReleaseJSON: string; var AssetsJSON: string): Boolean;
 var
   i: Integer;
   KeyValue: TStringList;
+  CachedData: string;
 begin
-  Result := '';
+  Result := False;
   KeyValue := TStringList.Create;
   try
     for i := 0 to CachedReleaseInfo.Count - 1 do
@@ -434,7 +431,10 @@ begin
       KeyValue.DelimitedText := CachedReleaseInfo[i];
       if SameText(KeyValue[0], Repo) then
       begin
-        Result := KeyValue[1];
+        CachedData := KeyValue[1];
+        ReleaseJSON := Copy(CachedData, 1, Pos('|', CachedData) - 1);
+        AssetsJSON := Copy(CachedData, Pos('|', CachedData) + 1, Length(CachedData));
+        Result := True;
         Exit;
       end;
     end;
@@ -470,144 +470,96 @@ procedure GetLatestReleaseHTTPInfo(Repo: string);
 var
   HttpCli: Variant;
   I, J: Integer;
-  AssetsURL, CachedJSON: string;
+  AssetsURL: string;
 begin
-  CachedJSON := GetCachedJSONForRepo(Repo);
-  if CachedJSON <> '' then
+  if GetCachedJSONForRepo(Repo, LatestReleaseJSON, LatestReleaseAssetsJSON) then
   begin
     Log('Using cached release info for ' + Repo);
-    LatestReleaseJSON := CachedJSON;
-    I := Pos('"tag_name":"', LatestReleaseJSON);
-    if I > 0 then
+    Exit;
+  end;
+
+  Log('Fetching latest release info for ' + Repo);
+  LatestReleaseJSON := '';
+  LatestReleaseAssetsJSON := '';
+  LatestReleaseVersion := '';
+
+  try
+    HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
+    HttpCli.Open('GET', GitHubAPI + Repo + '/releases/latest', False);
+    HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
+    MyAccessToken := ReadGitHubAccessToken;
+    if MyAccessToken <> '' then
+      HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
+
+    HttpCli.Send;
+
+    if HttpCli.Status = 200 then
     begin
-      I := I + Length('"tag_name":"');
-      J := FindNextQuote(LatestReleaseJSON, I);
-      if J > 0 then
-        LatestReleaseVersion := Copy(LatestReleaseJSON, I, J - I);
-    end;
-    I := Pos('"assets_url":"', LatestReleaseJSON);
-    if I > 0 then
-    begin
-      I := I + Length('"assets_url":"');
-      J := FindNextQuote(LatestReleaseJSON, I);
-      if J > 0 then
+      LatestReleaseJSON := HttpCli.ResponseText;
+      if LatestReleaseJSON = '' then
       begin
-        AssetsURL := Copy(LatestReleaseJSON, I, J - I);
-        HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
-        HttpCli.Open('GET', AssetsURL, False);
-        HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
-        if MyAccessToken <> '' then
-          HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
-        HttpCli.Send;
-        if HttpCli.Status = 200 then
-        begin
-          Log('GitHub Call');
-          LatestReleaseAssetsJSON := HttpCli.ResponseText;
-          if LatestReleaseAssetsJSON = '' then
-            Log('No assets found for the latest release');
-        end
-        else
-          Log('Failed to fetch assets info, status: ' + IntToStr(HttpCli.Status));
+        Log('Empty response for latest release info');
+        Exit;
       end;
-    end;
-  end
-  else
-  begin
-    Log('Fetching latest release info for ' + Repo);
-    LatestReleaseJSON := '';
-    LatestReleaseAssetsJSON := '';
-    LatestReleaseVersion := '';
 
-    try
-      HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
-      HttpCli.Open('GET', GitHubAPI + Repo + '/releases/latest', False);
-      HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
-      MyAccessToken := ReadGitHubAccessToken;
-      if MyAccessToken <> '' then
-        HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
-
-      HttpCli.Send;
-
-      if HttpCli.Status = 200 then
+      I := Pos('"tag_name":"', LatestReleaseJSON);
+      if I > 0 then
       begin
-        LatestReleaseJSON := HttpCli.ResponseText;
-        if LatestReleaseJSON = '' then
-        begin
-          Log('Empty response for latest release info');
-          Exit;
-        end;
+        I := I + Length('"tag_name":"');
+        J := FindNextQuote(LatestReleaseJSON, I);
+        if J > 0 then
+          LatestReleaseVersion := Copy(LatestReleaseJSON, I, J - I);
+      end;
 
-        I := Pos('"tag_name":"', LatestReleaseJSON);
-        if I > 0 then
-        begin
-          I := I + Length('"tag_name":"');
-          J := FindNextQuote(LatestReleaseJSON, I);
-          if J > 0 then
-            LatestReleaseVersion := Copy(LatestReleaseJSON, I, J - I);
-        end;
-
-        I := Pos('"assets_url":"', LatestReleaseJSON);
-        if I > 0 then
-        begin
-          I := I + Length('"assets_url":"');
-          J := FindNextQuote(LatestReleaseJSON, I);
-          if J > 0 then
-          begin
-            AssetsURL := Copy(LatestReleaseJSON, I, J - I);
-            HttpCli.Open('GET', AssetsURL, False);
-            HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
-            if MyAccessToken <> '' then
-              HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
-
-            HttpCli.Send;
-            if HttpCli.Status = 200 then
-            begin
-              LatestReleaseAssetsJSON := HttpCli.ResponseText;
-              if LatestReleaseAssetsJSON = '' then
-                Log('No assets found for the latest release');
-            end
-            else
-              Log('Failed to fetch assets info, status: ' + IntToStr(HttpCli.Status));
-          end;
-        end;
-
-        CachedReleaseInfo.Add(Repo + '=' + LatestReleaseJSON); // Cache the JSON response
-      end
-      else
+      I := Pos('"assets_url":"', LatestReleaseJSON);
+      if I > 0 then
       begin
-        Log('Failed to fetch latest release info, status: ' + IntToStr(HttpCli.Status));
-        if HttpCli.Status = 403 then
+        I := I + Length('"assets_url":"');
+        J := FindNextQuote(LatestReleaseJSON, I);
+        if J > 0 then
         begin
-          Log('HTTP 403 Forbidden error. Possible rate limit exceeded.');
-          if MsgBox('GitHub download rate limit exceeded. Please wait a moment before retrying. Click OK to retry now, or Cancel to exit.', mbInformation, MB_OKCANCEL) = IDOK then
+          AssetsURL := Copy(LatestReleaseJSON, I, J - I);
+          HttpCli.Open('GET', AssetsURL, False);
+          HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
+          if MyAccessToken <> '' then
+            HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
+
+          HttpCli.Send;
+          if HttpCli.Status = 200 then
           begin
-            Log('User acknowledged rate limit message. Retrying...');
-            GetLatestReleaseHTTPInfo(Repo);
+            LatestReleaseAssetsJSON := HttpCli.ResponseText;
+            if LatestReleaseAssetsJSON = '' then
+              Log('No assets found for the latest release');
           end
           else
-          begin
-            Log('User canceled retry. Exiting installer.');
-            UserCanceled := True;
-            Exit;
-          end;
+            Log('Failed to fetch assets info, status: ' + IntToStr(HttpCli.Status));
         end;
       end;
-    except
-      Log('Exception occurred while fetching latest release info: ' + GetExceptionMessage);
-    end;
-  end;
-end;
 
-procedure FetchAndCacheRepoInfo(Repo: string);
-begin
-  if GetCachedJSONForRepo(Repo) = '' then
-  begin
-    Log('Fetching latest release info for ' + Repo);
-    GetLatestReleaseHTTPInfo(Repo);
-    CachedReleaseInfo.Add(Repo + '=' + LatestReleaseJSON); // Cache the JSON response
-  end
-  else
-    Log('Using cached release info for ' + Repo);
+      CachedReleaseInfo.Add(Repo + '=' + LatestReleaseJSON + '|' + LatestReleaseAssetsJSON); // Cache the JSON responses
+    end
+    else
+    begin
+      Log('Failed to fetch latest release info, status: ' + IntToStr(HttpCli.Status));
+      if HttpCli.Status = 403 then
+      begin
+        Log('HTTP 403 Forbidden error. Possible rate limit exceeded.');
+        if MsgBox('GitHub download rate limit exceeded. Please wait a moment before retrying. Click OK to retry now, or Cancel to exit.', mbInformation, MB_OKCANCEL) = IDOK then
+        begin
+          Log('User acknowledged rate limit message. Retrying...');
+          GetLatestReleaseHTTPInfo(Repo);
+        end
+        else
+        begin
+          Log('User canceled retry. Exiting installer.');
+          UserCanceled := True;
+          Exit;
+        end;
+      end;
+    end;
+  except
+    Log('Exception occurred while fetching latest release info: ' + GetExceptionMessage);
+  end;
 end;
 
 function GetLatestReleaseAssets(Repo, Resolution: string; var Version: string; var Size: string): string;
@@ -770,11 +722,12 @@ end;
 procedure RetrieveBodyInfo;
 var
   I: Integer;
+  ReleaseJSON, AssetsJSON: string;
 begin
   Log('Retrieving body info');
   SetLength(BodyVersions, Length(BodyRepos));
   SetLength(BodySizes, Length(BodyRepos));
-  SetLength(AssetDataList, Length(BodyRepos));
+  SetLength(AssetDataList, Length(BodyRepos)); // Ensure AssetDataList is properly initialized
 
   for I := 0 to High(BodyRepos) do
   begin
@@ -784,18 +737,29 @@ begin
       Exit;
     end;
 
-    GetLatestReleaseHTTPInfo(BodyRepos[I]);
+    if GetCachedJSONForRepo(BodyRepos[I], ReleaseJSON, AssetsJSON) then
+    begin
+      LatestReleaseJSON := ReleaseJSON;
+      LatestReleaseAssetsJSON := AssetsJSON;
+    end
+    else
+    begin
+      GetLatestReleaseHTTPInfo(BodyRepos[I]);
+      ReleaseJSON := LatestReleaseJSON;
+      AssetsJSON := LatestReleaseAssetsJSON;
+    end;
 
     BodyVersions[I] := LatestReleaseVersion;
-    BodySizes[I] := GetFileSizeForLatestReleaseFromAssets(LatestReleaseAssetsJSON);
+    BodySizes[I] := GetFileSizeForLatestReleaseFromAssets(AssetsJSON);
 
     if Assigned(AssetDataList[I]) then
       AssetDataList[I].Free; // Free previously assigned TStringList
 
     AssetDataList[I] := TStringList.Create;
-    AssetDataList[I].Text := LatestReleaseAssetsJSON;
+    AssetDataList[I].Text := AssetsJSON;
   end;
 end;
+
 
 procedure UpdateSizeLabel(ComboBoxTag: Integer);
 // Updates the label showing the total size of selected resolutions.
@@ -820,13 +784,18 @@ var
   Size, TotalSize: Int64;
   AddedResolutions: TStringList;
 begin
-  InitializeArrayLengths;
-
   AddedResolutions := TStringList.Create;
   try
     Log('Populating resolutions for ' + BodyRepos[RepoIndex]);
     ComboBox.Items.Clear;
     Sizes.Clear;
+
+    // Ensure that the RepoIndex is within the bounds of AssetDataList
+    if (RepoIndex < 0) or (RepoIndex >= Length(AssetDataList)) then
+    begin
+      Log('Error: RepoIndex ' + IntToStr(RepoIndex) + ' is out of range.');
+      Exit;
+    end;
 
     // Use cached data from RetrieveBodyInfo
     LatestReleaseAssetsJSON := AssetDataList[RepoIndex].Text;
@@ -885,7 +854,7 @@ begin
     end;
   finally
     AddedResolutions.Free;
-  end
+  end;
 end;
 
 procedure ComboBoxChange(Sender: TObject);
@@ -959,39 +928,6 @@ begin
   end;
 end;
 
-procedure SetITDOptions;
-// Sets options for the InnoTools Downloader.
-begin
-  ITDLogFilePath := ExpandConstant('{tmp}\itd_log.txt'); 
-  ITD_SetOption('ShowDetailsButton', 'true');
-  ITD_SetOption('UI_DetailedMode', '1');
-  ITD_SetOption('UI_AllowContinue', '1');
-  ITD_SetOption('Debug_Messages', '1');
-  ITD_SetOption('Debug_DownloadDelay', '0');
-  ITD_SetOption('UI_Caption', 'Downloading Files...');
-  ITD_SetOption('UI_Description', 'Please wait while the required files are being downloaded.');
-  ITD_SetOption('RetryCount', '1');
-  ITD_SetOption('LogToFile', '1'); 
-  ITD_SetOption('LogFile', ITDLogFilePath); 
-  ITD_SetOption('RetryDelay', '5000');
-  ITD_SetOption('detailed_mode', '1');
-  ITD_SetOption('UseRetry', '1'); 
-  Log('ITD options set.');
-end;
-
-procedure SetCustomUserAgent();
-var
-  UA: String;
-begin
-  UA := 'InnoTools Downloader ' + ITD_GetOption('ITD_Version') + ' (Windows ';
-  if UsingWinNT then UA := UA + 'NT ';
-  if IsWin64 then UA := UA + 'x64 ';
-  UA := UA + GetWindowsVersionString + ')';
-  
-  // Set the custom user agent
-  ITD_SetOption('ITD_Agent', UA);
-end;
-
 procedure InitializeWizard;
 var
   I: Integer;
@@ -1009,18 +945,10 @@ begin
   // Read GitHub access token from the registry
   MyAccessToken := ReadGitHubAccessToken;
 
-  // Fetch and cache release info
-  for I := 0 to High(BodyRepos) do
-  begin
-    FetchAndCacheRepoInfo(BodyRepos[I]);
-  end;
-
   RetrieveBodyInfo;
 
   DownloadsDir := ExpandConstant('{userdocs}\Desktop');
   Log('Downloads directory initialized: ' + DownloadsDir);
-
-  SetITDOptions;
 
   RP1Checkbox := TNewCheckBox.Create(WizardForm);
   RP1Checkbox.Parent := WizardForm.WelcomePage;
@@ -1049,6 +977,8 @@ begin
 
   Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
   wpSelectResolutions := Page.ID;
+	
+  DownloadPage := CreateOutputProgressPage('Downloading Files', 'Please wait while the necessary files are being downloaded.');
 
   WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(0);
   WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(0);
@@ -1103,17 +1033,6 @@ begin
     PageHeight := PageHeight + 25;
   end;
 
-   try
-    Log('Calling ITD_Init');
-    ITD_Init;
-		ITD_DownloadAfter(wpReady);
-    Log('ITD_Init successful');
-
-  except
-    Log('ITD_Init failed: ' + GetExceptionMessage);
-    Exit;
-  end;
-
   WizardForm.Repaint;
   Page.Surface.Repaint;
 
@@ -1157,10 +1076,15 @@ var
   AssetName, BrowserDownloadURL: string;
   I, J, StartPos: Integer;
   AssetURLs: TStringList;
+  ReleaseJSON, AssetsJSON: string;
 begin
   Result := TStringList.Create;
-  LatestReleaseAssetsJSON := GetCachedJSONForRepo(Repo);
-  if LatestReleaseAssetsJSON = '' then
+  if GetCachedJSONForRepo(Repo, ReleaseJSON, AssetsJSON) then
+  begin
+    LatestReleaseAssetsJSON := AssetsJSON;
+    LatestReleaseJSON := ReleaseJSON;
+  end
+  else
   begin
     GetLatestReleaseHTTPInfo(Repo);
     LatestReleaseAssetsJSON := LatestReleaseAssetsJSON;
@@ -1232,7 +1156,6 @@ begin
     begin
       Log('Adding to download list: ' + BrowserDownloadURL + ' as ' + DestFilePath);
       DownloadList.Add(BrowserDownloadURL + '=' + DestFilePath);
-      ITD_AddFile(BrowserDownloadURL, DestFilePath);
     end
     else
     begin
@@ -1275,7 +1198,7 @@ begin
 
   // Scatterer (if not already downloaded by user)
   if not ScattererDownloaded then
-    AddToDownloadList('yourusername/Scatterer', '', ExpandConstant('{tmp}\Scatterer.zip'));
+    AddToDownloadList('LGhassen/Scatterer', '', ExpandConstant('{tmp}\Scatterer.zip'));
 
   // EVE (if not already downloaded by user)
   if not EVEDownloaded then
@@ -1291,7 +1214,6 @@ begin
     AddToDownloadList('Gameslinx/Tessellation', '', ExpandConstant('{tmp}\Parallax_ScatterTextures-' + LatestVersion + '.zip'));
   end;
 end;
-
 
 procedure MergeGameDataFolders;
 var
@@ -1528,12 +1450,6 @@ begin
     Exit;
   end;
   RemoveObsoleteFolders;
-  try
-    Log('Calling ITD_DownloadAfter to initiate download process.');
-    OnDownloadComplete;
-  except
-    Log('ITD_DownloadAfter failed: ' + GetExceptionMessage);
-  end;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -1566,23 +1482,40 @@ end;
 procedure DownloadAllFiles;
 var
   I: Integer;
-  DownloadItem, URL, TempFile: string;
-  DownloadResult: Integer;
+  DownloadItem, URL, TempFile, CacheFile: string;
+  HttpCli: Variant;
 begin
   for I := 0 to DownloadList.Count - 1 do
   begin
     // Extract URL and TempFile from DownloadList
     DownloadItem := DownloadList[I];
-    URL := ExtractFilePath(DownloadItem);
-    TempFile := ExtractFileName(DownloadItem);
+    URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
+    TempFile := Copy(DownloadItem, Pos('=', DownloadItem) + 1, Length(DownloadItem));
 
     Log('Downloading ' + URL + ' to ' + TempFile);
 
-    // Add the file to download queue
-    ITD_AddFile(URL, TempFile);
+    // Define the cache file path
+    CacheFile := AddBackslash(DownloadsDir) + ExtractFileName(TempFile);
 
-    // Initiate download
-    DownloadResult := ITD_DownloadFile(URL, TempFile);
+    begin
+      try
+        HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
+        HttpCli.Open('GET', URL, False);
+        HttpCli.Send;
+
+        if HttpCli.Status = 200 then
+        begin
+          // Save to the destination
+          HttpCli.ResponseBody.SaveToFile(TempFile, 2);  // 2 means SaveAs in ADODB.Stream
+        end
+        else
+        begin
+          Log('Error downloading file from ' + URL + ', status: ' + IntToStr(HttpCli.Status));
+        end;
+      except
+        Log('Error downloading file from ' + URL);
+      end;
+    end;
   end;
 end;
 
@@ -1595,18 +1528,6 @@ begin
     LogDownloadListDetails;
   except
     Log('Error in InitializeDownloads: ' + GetExceptionMessage);
-    Result := False;
-  end;
-end;
-
-function DownloadFiles: Boolean;
-begin
-  Result := True;
-  try
-    Log('Calling ITD_DownloadAfter to initiate download process.');
-		DownloadAllFiles;
-  except
-    Log('DownloadFiles failed: ' + GetExceptionMessage);
     Result := False;
   end;
 end;
@@ -1634,7 +1555,7 @@ begin
     Result := False;
   end;
 end;
-	
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
@@ -1649,12 +1570,7 @@ begin
       Exit;
     end;
 
-    if not DownloadFiles then
-    begin
-      Log('Download files step failed.');
-      MsgBox('Download files step failed. Please check the logs for details.', mbError, MB_OK);
-      Exit;
-    end;
+    DownloadAllFiles;
 
     if not ExtractFiles then
     begin
