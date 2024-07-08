@@ -1,12 +1,12 @@
 # RSS Reborn Installer
 
-Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer! This installer is designed to help you easily set up Ballisticfox's RSS Reborn mod for Rp-1 (RSS/RO).
+Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer! This installer is designed to help you easily set up Ballisticfox's RSS Reborn mod for RP-1 (RSS/RO).
 
 ![RSS Reborn Installer](https://github.com/drobie22/RSS-Reborn-Installer/blob/main/Images/wizard.png?raw=true)
 
 ## Features
 
-- Downloads and installs the RSS Reborn mod and its dependencies.
+- Downloads and installs the RSS Reborn mod and its dependencies to a game directory you choose. 
 - Provides options to select different resolutions for textures.
 - Optionally can include Blackrack's Volumetric Clouds (EVE and Scatterer, which you must still download from Patreon).
 
@@ -29,23 +29,28 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 1. Run the downloaded `RSS-Reborn-Installer.exe`.
 2. Follow the on-screen instructions:
    - Confirm that you have successfully launched RP-1 at least once.
-   - Optionally confirm that you have downloaded and installed Blackrack's EVE and Scatterer enhancements.
+   - Optionally confirm that you have downloaded Blackrack's EVE and Scatterer enhancements.
    - Select the desired resolutions for textures.
-3. The installer will download and install the necessary files.
+   - Specify a game directory (defaults to steam install). 
+3. The installer will download, extract, merge, and move the necessary files into your gamedata.
 
 ### Step 3: Launch KSP
 
 1. After the installation is complete, launch Kerbal Space Program.
 2. Enjoy your enhanced RSS Reborn experience!
 
+Note: If any you encounter any issues, please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues).
+
 ## Troubleshooting
 
-- Ensure that 7-Zip is installed and the path is correctly set if using a different location.
-- Verify that you have the necessary permissions to write to the KSP installation directory.
+- Ensure that 7-Zip is installed in the default location.
+- Check to make sure RP-1 (RSS/RO) can successfully run before using this installer. If that doesnt work, RSS Reborn will obviously not work. 
+- If you load the game but get stuck on an infinite black loading screen with spinning planets, check to see if you have the stock Squad folders in GameData. Otherwise, submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues).
+- GitHub naturally doesn't like programs fetching lots of data at once. Usually this is capped at 60/hour. The installer will run 20-40 requests to GitHub in a run depending on resolutions selected. If you see an error related to GitHub's rate limit, please wait an hour before trying again. Alternatively, there is a method to set up an access token on your machine which the installer will recognize and use to increase the limit to 5000/hour. Instructions will be implimented soon. 
 
 ## Credits
 
-Big thank you to ballisticfox, Techo, and VaNnadin for creating and maintaining RSS Reborn, and to Blackrack for his amazing Volumetric Clouds!
+Big thank you to Ballisticfox, Techo, and VaNnadin for creating and maintaining RSS Reborn, and to Blackrack for his amazing Volumetric Clouds!
 
 ## License
 
