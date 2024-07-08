@@ -15,7 +15,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 - [Kerbal Space Program](https://www.kerbalspaceprogram.com/)
 - [RP-1 RSS/RO Modpack](https://github.com/KSP-RO/RP-0) (must be installed and launched at least once)
 - [7-Zip](https://www.7-zip.org/download.html) (for extracting files)
-- (Optional) [Blackrack's Volumetric Clouds](https://www.patreon.com/blackrack) If you wish to include this, you must have his EVE and Scatterer zips downloaded to your downloads folder so the installer can grab them. 
+- (Optional) [Blackrack's Volumetric Clouds](https://www.patreon.com/blackrack) If you wish to include this, you must have his EVE and Scatterer zips downloaded to your downloads folder so the installer can grab them. This is in place to ensure you have obtained the files through Patreon. RSS Reborn Installer will never circumvent support for mod developers. 
 
 ## How to Download and Install
 
@@ -46,7 +46,15 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
 - Ensure that 7-Zip is installed in the default location.
 - Check to make sure RP-1 (RSS/RO) can successfully run before using this installer. If that doesnt work, RSS Reborn will obviously not work. 
 - If you load the game but get stuck on an infinite black loading screen with spinning planets, check to see if you have the stock Squad folders in GameData. Otherwise, submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues).
-- GitHub naturally doesn't like programs fetching lots of data at once. Usually this is capped at 60/hour. The installer will run 20-40 requests to GitHub in a run depending on resolutions selected. If you see an error related to GitHub's rate limit, please wait an hour before trying again. Alternatively, there is a method to set up an access token on your machine which the installer will recognize and use to increase the limit to 5000/hour. Instructions will be implimented soon. 
+- GitHub naturally doesn't like programs fetching lots of data at once. Usually this is capped at 60/hour. The installer will run 20-40 requests to GitHub in a run depending on resolutions selected. If you see an error related to GitHub's rate limit, please wait an hour before trying again. 
+    - Alternatively, there is a method to set up an access token on your machine which the installer will recognize and use to increase the limit to 5000/hour. Instructions will be implimented soon. 
+    - Installer will always grab the latest files from GitHub
+- Help! No resolutions showing for a body! Most likely the latest release of that body was empty. Before you start installation, manually download the previous release. 
+
+## Future Updates
+
+- Support for downloading deferred rendering, user-downloaded and automated installation. 
+- Support for retrieving files from other releases, not just the latest. 
 
 ## Credits
 
