@@ -2,6 +2,10 @@
 ; David Robie (DRobie22)
 ; This installer follows RSS Reborn's GitHub Instructions
 
+; Please note: This is my first time using inno setup
+; Some sections could be done better, more efficiently, and be overall less complex
+; Feel free to contribute, or offer constructive criticism 
+
 #define MyAppName "RSS Reborn Installer"
 #define MyAppVersion "0.5"
 #define MyAppPublisher "DRobie22"
@@ -48,6 +52,9 @@ const
   RSSTexturesRepo = 'RSS-Reborn/RSS-Terrain';
   S_OK = 0;
   URLMON_DLL = 'urlmon.dll';
+	SECONDS_IN_A_DAY = 86400;
+  SECONDS_IN_AN_HOUR = 3600;
+  SECONDS_IN_A_MINUTE = 60;
 	
 var
   AssetDataList: array of TStringList;
@@ -56,6 +63,7 @@ var
 	BodyVersions: array of string;
 	CachedReleaseInfo: TStringList;
 	CurrentFileLabel: TNewStaticText;
+	CurrentFileLabelE: TNewStaticText;
   DownloadList: TStringList;
   DownloadsDir: string;
 	EVEAndScattererCheckbox: TNewCheckBox;
@@ -63,6 +71,7 @@ var
 	KSP_DIR: string;
   KSPDirPage: TInputDirWizardPage;
 	DownloadPage: TOutputProgressWizardPage;
+	ExtractPage: TOutputProgressWizardPage;
 	LatestReleaseAssetsJSON: string;
 	LatestReleaseJSON: string;
   LatestReleaseVersion: string;
@@ -248,6 +257,20 @@ begin
     end;
 end;
 
+function ReplaceSubstring(const S, OldPattern, NewPattern: string): string;
+var
+  PosStart: Integer;
+begin
+  Result := S;
+  PosStart := Pos(OldPattern, Result);
+  while PosStart > 0 do
+  begin
+    Delete(Result, PosStart, Length(OldPattern));
+    Insert(NewPattern, Result, PosStart);
+    PosStart := Pos(OldPattern, Result); // Find the next occurrence
+  end;
+end;
+
 function ExtractFileNameWithoutExt(const FileName: string): string;
 // Helper function
 var
@@ -257,6 +280,17 @@ begin
   I := LastDelimiter('.', Result);
   if I > 0 then
     SetLength(Result, I - 1);
+end;
+
+function CustomExtractFileName(DownloadURL: string): string;
+var
+  FileNameStartPos: Integer;
+begin
+  // Find the last '/' in the URL
+  FileNameStartPos := LastDelimiter('/', DownloadURL) + 1;
+  
+  // Extract the filename from the URL, including everything after the last '/'
+  Result := Copy(DownloadURL, FileNameStartPos, Length(DownloadURL) - FileNameStartPos + 1);
 end;
 
 function FindNextQuote(const JSON: string; StartIndex: Integer): Integer;
@@ -446,11 +480,107 @@ begin
     Result := FormatSize(TotalSize); // Ensure this formats to MB
 end;
 
+function DateToDays(Year, Month, Day: Integer): Int64;
+var
+  A, Y, M: Int64;
+begin
+  A := (14 - Month) div 12;
+  Y := Year + 4800 - A;
+  M := Month + 12 * A - 3;
+  Result := Day + ((153 * M + 2) div 5) + (365 * Y) + (Y div 4) - (Y div 100) + (Y div 400) - 32045;
+end;
+
+function GetCurrentUnixTime: Int64;
+var
+  DateTimeStr: string;
+  Year, Month, Day, Hour, Minute, Second: Integer;
+  DaysSinceUnixEpoch: Int64;
+  SecondsInCurrentDay: Int64;
+begin
+  DateTimeStr := GetDateTimeString('yyyy-mm-dd hh:nn:ss', #0, #0);
+  // Extract year, month, day, hour, minute, second
+  Year := StrToInt(Copy(DateTimeStr, 1, 4));
+  Month := StrToInt(Copy(DateTimeStr, 6, 2));
+  Day := StrToInt(Copy(DateTimeStr, 9, 2));
+  Hour := StrToInt(Copy(DateTimeStr, 12, 2));
+  Minute := StrToInt(Copy(DateTimeStr, 15, 2));
+  Second := StrToInt(Copy(DateTimeStr, 18, 2));
+
+  // Calculate days since Unix epoch (January 1, 1970)
+  DaysSinceUnixEpoch := DateToDays(Year, Month, Day) - DateToDays(1970, 1, 1);
+  // Calculate seconds in the current day
+  SecondsInCurrentDay := (Hour * SECONDS_IN_AN_HOUR) + (Minute * SECONDS_IN_A_MINUTE) + Second;
+
+  // Calculate total Unix time
+  Result := (DaysSinceUnixEpoch * SECONDS_IN_A_DAY) + SecondsInCurrentDay;
+end;
+
+function SecondsToTimeStr(Seconds: Int64): string;
+var
+  Days, Hours, Minutes: Int64;
+begin
+  Days := Seconds div SECONDS_IN_A_DAY;
+  Hours := (Seconds mod SECONDS_IN_A_DAY) div SECONDS_IN_AN_HOUR;
+  Minutes := (Seconds mod SECONDS_IN_AN_HOUR) div SECONDS_IN_A_MINUTE;
+  Result := Format('%d days, %d hours, %d minutes', [Days, Hours, Minutes]);
+end;
+
+procedure CheckRateLimit;
+var
+  HttpCli: Variant;
+  Response, CoreResource, ResetTimeStr: string;
+  ResetTime, CurrentTime, TimeRemaining: Int64;
+  I, J: Integer;
+begin
+  try
+    HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
+    HttpCli.Open('GET', 'https://api.github.com/rate_limit', False);
+    HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
+    MyAccessToken := ReadGitHubAccessToken;
+    if MyAccessToken <> '' then
+      HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
+
+    HttpCli.Send;
+
+    if HttpCli.Status = 200 then
+    begin
+      Response := HttpCli.ResponseText;
+      I := Pos('"core":{', Response);
+      if I > 0 then
+      begin
+        CoreResource := Copy(Response, I, Length(Response) - I + 1);
+        I := Pos('"reset":', CoreResource);
+        if I > 0 then
+        begin
+          I := I + Length('"reset":');
+          J := PosEx(',', CoreResource, I);
+          ResetTimeStr := Copy(CoreResource, I, J - I);
+          ResetTime := StrToInt64(ResetTimeStr);
+          CurrentTime := GetCurrentUnixTime;
+          TimeRemaining := ResetTime - CurrentTime;
+
+          if TimeRemaining > 0 then
+            MsgBox('Rate limit will be reset in: ' + SecondsToTimeStr(TimeRemaining), mbInformation, MB_OK)
+          else
+            MsgBox('Rate limit has already been reset.', mbInformation, MB_OK);
+        end
+        else
+          Log('Failed to find reset time in response.');
+      end
+      else
+        Log('Failed to find core resource in response.');
+    end
+    else
+      Log('Failed to fetch rate limit info, status: ' + IntToStr(HttpCli.Status));
+  except
+    Log('Exception occurred while checking rate limit: ' + GetExceptionMessage);
+  end;
+end;
+
 procedure GetLatestReleaseHTTPInfo(Repo: string);
 var
   HttpCli: Variant;
   I, J: Integer;
-  AssetsURL: string;
   CombinedResponse, CachedData: string;
 begin
   if GetCachedJSONForRepo(Repo, LatestReleaseJSON, LatestReleaseAssetsJSON) then
@@ -514,6 +644,7 @@ begin
         Log('HTTP 403 Forbidden error. Possible rate limit exceeded.');
         if MsgBox('GitHub download rate limit exceeded. Please wait a moment before retrying. Click OK to retry now, or Cancel to exit.', mbInformation, MB_OKCANCEL) = IDOK then
         begin
+				  CheckRateLimit;
           Log('User acknowledged rate limit message. Retrying...');
           GetLatestReleaseHTTPInfo(Repo);
         end
@@ -587,25 +718,31 @@ begin
   AssetURLs.Free;
 end;
 
-function LatestReleaseHasFiles(URL: string): Boolean;
-// Checks if a GitHub release has associated files.
+function LatestReleaseHasFiles(Repo: string): Boolean;
 var
-  WinHttpReq: Variant;
+  ReleaseJSON, AssetsJSON: string;
 begin
+  Log('Checking if latest release has files for repository: ' + Repo);
   Result := False;
   
-  try
-    WinHttpReq := CreateOleObject('WinHttp.WinHttpRequest.5.1');
-    WinHttpReq.Open('HEAD', URL, False);
-    WinHttpReq.Send;
+  if GetCachedJSONForRepo(Repo, ReleaseJSON, AssetsJSON) then
+  begin
+    LatestReleaseAssetsJSON := AssetsJSON;
+    Log('Using cached release info for ' + Repo);
     
-    if WinHttpReq.Status = 200 then
+    if Pos('"assets":[', AssetsJSON) > 0 then
     begin
-      if WinHttpReq.GetResponseHeader('Content-Length') > 0 then
-        Result := True;
+      Result := True;
+      Log('Release has associated files.');
+    end
+    else
+    begin
+      Log('No assets found in cached release info.');
     end;
-  except
-    Log('Failed to check if latest release has files. Exception: ' + GetExceptionMessage);
+  end
+  else
+  begin
+    Log('Cached data not found for repository: ' + Repo);
   end;
 end;
 
@@ -648,42 +785,37 @@ begin
 end;
 
 function GetLatestReleaseVersion(Repo: string): string;
-// Fetches the latest release version from GitHub.
 var
-  HttpCli: Variant;
-  JSON, TagName: string;
+  ReleaseJSON, AssetsJSON: string;
   I, J: Integer;
 begin
   Log('Getting latest release version for repository: ' + Repo);
   Result := '';
-  try
-    HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
-    HttpCli.Open('GET', GitHubAPI + Repo + '/releases/latest', False);
-    HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
-
-    HttpCli.Send;
-
-    if HttpCli.Status = 200 then
+  
+  if GetCachedJSONForRepo(Repo, ReleaseJSON, AssetsJSON) then
+  begin
+    LatestReleaseJSON := ReleaseJSON;
+    Log('Using cached release info for ' + Repo);
+    
+    I := Pos('"tag_name":"', ReleaseJSON);
+    if I > 0 then
     begin
-      Log('Request successful, status: ' + IntToStr(HttpCli.Status));
-      JSON := HttpCli.ResponseText;
-      I := Pos('"tag_name":"', JSON);
-      if I > 0 then
+      I := I + Length('"tag_name":"');
+      J := FindNextQuote(ReleaseJSON, I);
+      if J > 0 then
       begin
-        I := I + Length('"tag_name":"');
-        JSON := Copy(JSON, I, Length(JSON) - I + 1);
-        J := Pos('"', JSON);
-        TagName := Copy(JSON, 1, J - 1);
-        Result := TagName;
+        Result := Copy(ReleaseJSON, I, J - I);
         Log('Latest release version found: ' + Result);
       end;
     end
     else
     begin
-      Log('Failed to get the latest release version for ' + Repo + '. Status: ' + IntToStr(HttpCli.Status));
+      Log('No tag_name found in cached release info.');
     end;
-  except
-    Log('Exception during HTTP request for latest release version of ' + Repo + ': ' + GetExceptionMessage);
+  end
+  else
+  begin
+    Log('Cached data not found for repository: ' + Repo);
   end;
 end;
 
@@ -951,6 +1083,14 @@ begin
   CurrentFileLabel.Width := DownloadPage.SurfaceWidth - ScaleX(16);
   CurrentFileLabel.Caption := 'Initializing download...';
 	
+	ExtractPage := CreateOutputProgressPage('Extracting Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
+  CurrentFileLabelE := TNewStaticText.Create(ExtractPage);
+  CurrentFileLabelE.Parent := ExtractPage.Surface;
+  CurrentFileLabelE.Left := ScaleX(8);
+  CurrentFileLabelE.Top := ScaleY(70);
+  CurrentFileLabelE.Width := ExtractPage.SurfaceWidth - ScaleX(16);
+  CurrentFileLabelE.Caption := 'Initializing Extraction...';
+	
   WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(0);
   WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(0);
 
@@ -1009,8 +1149,6 @@ begin
 
   Log('Wizard initialization completed');
 end;
-
-
 
 function GetRepoDownloadURLs(Repo, Resolution: string): TStringList;
 var
@@ -1271,21 +1409,37 @@ end;
 procedure ExtractProc;
 var
   I: Integer;
-  Entry, TempFile: string;
+  FileName, CurrentLoc, URL, DownloadItem, Dest, EndDest: string;
 begin
+  ExtractPage.SetProgress(0, DownloadList.Count);
   for I := 0 to DownloadList.Count - 1 do
   begin
-    Entry := DownloadList[I];
-    TempFile := Trim(Copy(Entry, Pos('=', Entry) + 1, Length(Entry)));
-    if Extract7Zip(ExpandConstant('{tmp}\') + ExtractFileName(TempFile), ExpandConstant('{app}')) then
+	  ExtractPage.SetProgress(I, DownloadList.Count);
+    DownloadItem := DownloadList[I];
+    URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
+    FileName := CustomExtractFileName(URL);
+    CurrentLoc := DownloadsDir + '\' + FileName;
+    
+    if Pos('.7z.00x', FileName) > 0 then
+      Dest := ReplaceSubstring(FileName, '.7z.00x', '')
+    else if Pos('.7z', FileName) > 0 then
+      Dest := ReplaceSubstring(FileName, '.7z', '');
+			
+	  EndDest := DownloadsDir + '\' + Dest;
+		
+		CurrentFileLabel.Caption := 'Extracting: ' + FileName;
+		WizardForm.Update;
+
+    if Extract7Zip(CurrentLoc, EndDest) then
     begin
-      Log('Extraction completed for ' + TempFile);
+      Log('Extraction completed for ' + CurrentLoc);
     end
     else
     begin
-      Log('Failed to extract ' + TempFile);
+      Log('Failed to extract ' + CurrentLoc);
     end;
   end;
+	ExtractPage.SetProgress(DownloadList.Count, DownloadList.Count);
 end;
 
 procedure VerifyDownloadCompletion;
@@ -1438,12 +1592,13 @@ begin
     // Extract URL and TempFile from DownloadList
     DownloadItem := DownloadList[I];
     URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
-    FileName := Copy(DownloadItem, Pos('=', DownloadItem) + 1, Length(DownloadItem));
+    FileName := CustomExtractFileName(URL);
 
     // Ensure the correct destination path
-    Dest := DownloadsDir + '\' + ExtractFileName(FileName);
+    Dest := DownloadsDir + '\' + FileName;
 
-    CurrentFileLabel.Caption := 'Downloading: ' + Dest;
+    CurrentFileLabel.Caption := 'Downloading: ' + FileName;
+		WizardForm.Update;
     Log('Downloading ' + URL + ' to ' + Dest);
 
     DownloadResult := URLDownloadToFile(0, PAnsiChar(URL), PAnsiChar(Dest), 0, 0);
@@ -1504,7 +1659,7 @@ procedure DeinitializeSetup;
 begin
   Log('Deinitializing setup and cleaning up resources');  // Ensure complete logging
   CleanupTemporaryFiles;
-	ClearDownloadDirectory;
+	//ClearDownloadDirectory;
   DeinitializeVariables;
 end;
 
@@ -1522,15 +1677,24 @@ begin
         MsgBox('Failed to initialize downloads. Please check the logs for details.', mbError, MB_OK);
         Exit;
       end;
+			
+			DownloadAllFiles;
+			
+		finally
+		  DownloadPage.Hide;
+			ExtractPage.Show;
+		end
 
-      DownloadAllFiles;
-
+		try
       if not ExtractFiles then
       begin
         Log('Extract files step failed.');
         MsgBox('Extract files step failed. Please check the logs for details.', mbError, MB_OK);
         Exit;
       end;
+		finally
+		  ExtractPage.Hide;
+		end;
 
       if not MergeGameData then
       begin
@@ -1541,8 +1705,6 @@ begin
 
       Log('Installation process completed successfully, cleaning up files now');
 			DeinitializeSetup;
-    finally
-      DownloadPage.Hide;
-    end;
+
   end;
 end;
