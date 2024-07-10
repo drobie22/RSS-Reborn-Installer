@@ -914,6 +914,20 @@ begin
           Resolution := ExtractResolution(AssetName);
           Log('Found asset: ' + AssetName + ' with resolution: ' + Resolution);
 
+					// Exclude files with "NoModels" in the name
+          if Pos('NoModels', AssetName) > 0 then
+          begin
+            StartPos := J + 1;
+            Continue; // Skip this asset
+          end;
+					
+					// Exclude files with "Scaled" in the name
+          if Pos('Scaled', AssetName) > 0 then
+          begin
+            StartPos := J + 1;
+            Continue; // Skip this asset
+          end;
+					
           Size := 0;
           I := PosEx('"size":', LatestReleaseAssetsJSON, J);
           if I > 0 then
@@ -925,23 +939,24 @@ begin
 
             if Resolution <> '' then
             begin
-              if AddedResolutions.IndexOf(Resolution) = -1 then
+              // Check if the exact AssetName (excluding NoModels) exists in AddedResolutions
+              if AddedResolutions.IndexOf(AssetName) = -1 then
               begin
                 ComboBox.Items.Add(Resolution);
-                AddedResolutions.Add(Resolution);
+                AddedResolutions.Add(AssetName);
                 Sizes.Add(IntToStr(Size));
                 Log('Added resolution: ' + Resolution + ' with size: ' + IntToStr(Size));
               end
               else
               begin
-                TotalSize := StrToInt64(Sizes[AddedResolutions.IndexOf(Resolution)]) + Size;
-                Sizes[AddedResolutions.IndexOf(Resolution)] := IntToStr(TotalSize);
+                TotalSize := StrToInt64(Sizes[AddedResolutions.IndexOf(AssetName)]) + Size;
+                Sizes[AddedResolutions.IndexOf(AssetName)] := IntToStr(TotalSize);
                 Log('Updated resolution: ' + Resolution + ' with new size: ' + IntToStr(TotalSize));
-              end
-            end
+              end;
+            end;
           end;
           StartPos := J + 1;
-        end
+        end;
       end
       else
         Break;
@@ -1677,9 +1692,7 @@ begin
         MsgBox('Failed to initialize downloads. Please check the logs for details.', mbError, MB_OK);
         Exit;
       end;
-			
 			DownloadAllFiles;
-			
 		finally
 		  DownloadPage.Hide;
 			ExtractPage.Show;
