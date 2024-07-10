@@ -55,6 +55,8 @@ const
 	SECONDS_IN_A_DAY = 86400;
   SECONDS_IN_AN_HOUR = 3600;
   SECONDS_IN_A_MINUTE = 60;
+  MOVEFILE_COPY_ALLOWED = $2;
+  MOVEFILE_REPLACE_EXISTING = $1;	
 	
 var
   AssetDataList: array of TStringList;
@@ -154,7 +156,7 @@ begin
   Result := True;
   if not IsEnoughDiskSpaceAvailable then
   begin
-    MsgBox('You need at least 50 GB of free disk space to install this application.', mbError, MB_OK);
+    MsgBox('You need at least 50 GB of free disk space to install RSS-Reborn without issues.', mbError, MB_OK);
     Result := False;
     Log('Not enough disk space available.');
   end
@@ -437,14 +439,16 @@ begin
 end;
 
 function Extract7Zip(ArchivePath, DestDir: string): Boolean;
-// Use user's 7zip to unzip files
+// Use user's 7zip to unzip files, including multi-volume archives
 var
   ZipPath: string;
   ResultCode: Integer;
   CommandLine: string;
+  IsMultiVolume: Boolean;
+  FirstPartArchivePath: string;
 begin
   Log(Format('Extracting archive %s to directory %s', [ArchivePath, DestDir]));
-  
+
   if FileExists('C:\Program Files\7-Zip\7z.exe') then
     ZipPath := 'C:\Program Files\7-Zip\7z.exe'
   else if FileExists('C:\Program Files (x86)\7-Zip\7z.exe') then
@@ -456,24 +460,37 @@ begin
     Result := False;
     Exit;
   end;
-  
+
   if not FileExists(ArchivePath) then
   begin
     Log('Archive file not found: ' + ArchivePath);
     Result := False;
     Exit;
   end;
-  
-  CommandLine := Format('"%s" x "%s" -o"%s" -y', [ZipPath, ArchivePath, DestDir]);
+
+  // Check if the archive is a multi-volume archive by looking for ".001" extension
+  IsMultiVolume := ExtractFileExt(ArchivePath) = '.001';
+  if IsMultiVolume then
+  begin
+    Log('Multi-volume archive detected');
+    FirstPartArchivePath := ArchivePath;
+    Log('Using first part of multi-volume archive: ' + FirstPartArchivePath);
+    CommandLine := Format('"%s" x "%s" -o"%s" -y', [ZipPath, FirstPartArchivePath, DestDir]);
+  end
+  else
+  begin
+    CommandLine := Format('"%s" x "%s" -o"%s" -y', [ZipPath, ArchivePath, DestDir]);
+  end;
+
   Log('Running command: ' + CommandLine);
-  
+
   if not Exec(ZipPath, 'x "' + ArchivePath + '" -o"' + DestDir + '" -y', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     Log(Format('Failed to execute 7-Zip for %s, error code: %d', [ArchivePath, ResultCode]));
     Result := False;
     Exit;
   end;
-  
+
   if ResultCode <> 0 then
   begin
     Log(Format('7-Zip returned error code %d while extracting %s', [ResultCode, ArchivePath]));
@@ -594,8 +611,7 @@ var
   I, J: Integer;
   CombinedResponse, CachedData: string;
 begin
-
-	//Start by checking if cached info already exists
+  // Check if cached info already exists
   if GetCachedJSONForRepo(Repo, LatestReleaseJSON, LatestReleaseAssetsJSON) then
   begin
     Log('Using cached release info for ' + Repo);
@@ -899,6 +915,7 @@ var
   AssetName, Resolution: string;
   Size, TotalSize: Int64;
   AddedResolutions: TStringList;
+  ResolutionIndex: Integer;
 begin
   AddedResolutions := TStringList.Create;
   try
@@ -930,20 +947,14 @@ begin
           Resolution := ExtractResolution(AssetName);
           Log('Found asset: ' + AssetName + ' with resolution: ' + Resolution);
 
-					// Exclude files with "NoModels" in the name
-          if Pos('NoModels', AssetName) > 0 then
-          begin
-            StartPos := J + 1;
-            Continue;
-          end;
-					
-					// Exclude files with "Scaled" in the name
-          if Pos('Scaled', AssetName) > 0 then
-          begin
-            StartPos := J + 1;
-            Continue; 
-          end;
-					
+          // Exclude files with "NoModels" or "Scaled" in the name
+					if (Pos('NoModels', AssetName) > 0) or (Pos('Scaled', AssetName) > 0) then
+					begin
+						Log('Skipping asset: ' + AssetName + ' due to exclusion criteria.');
+						StartPos := J + 1;
+						Continue;
+					end;
+
           Size := 0;
           I := PosEx('"size":', LatestReleaseAssetsJSON, J);
           if I > 0 then
@@ -955,18 +966,19 @@ begin
 
             if Resolution <> '' then
             begin
-              // Check if the exact AssetName exists in AddedResolutions
-              if AddedResolutions.IndexOf(AssetName) = -1 then
+              // Check if the exact Resolution exists in AddedResolutions
+              ResolutionIndex := AddedResolutions.IndexOf(Resolution);
+              if ResolutionIndex = -1 then
               begin
                 ComboBox.Items.Add(Resolution);
-                AddedResolutions.Add(AssetName);
+                AddedResolutions.Add(Resolution);
                 Sizes.Add(IntToStr(Size));
                 Log('Added resolution: ' + Resolution + ' with size: ' + IntToStr(Size));
               end
               else
               begin
-                TotalSize := StrToInt64(Sizes[AddedResolutions.IndexOf(AssetName)]) + Size;
-                Sizes[AddedResolutions.IndexOf(AssetName)] := IntToStr(TotalSize);
+                TotalSize := StrToInt64(Sizes[ResolutionIndex]) + Size;
+                Sizes[ResolutionIndex] := IntToStr(TotalSize);
                 Log('Updated resolution: ' + Resolution + ' with new size: ' + IntToStr(TotalSize));
               end;
             end;
@@ -987,6 +999,7 @@ begin
     AddedResolutions.Free;
   end;
 end;
+
 
 procedure ComboBoxChange(Sender: TObject);
 // Proc to assist in instant UI updates based on user input
@@ -1278,12 +1291,12 @@ begin
 
     if not URLExists then
     begin
-      Log('Adding to download list: ' + BrowserDownloadURL + ' as ' + DestFilePath);
+      Log('Add to downloads: ' + BrowserDownloadURL + ' as ' + DestFilePath);
       DownloadList.Add(BrowserDownloadURL + '=' + DestFilePath);
     end
     else
     begin
-      Log('Skipping already added URL: ' + BrowserDownloadURL);
+      Log('Skip duplicate URL: ' + BrowserDownloadURL);
     end;
   end;
 
@@ -1330,52 +1343,132 @@ begin
     AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', ExpandConstant('{tmp}\EVE.zip'));
 
   // Download Parallax and Parallax_ScatterTextures
-  LatestVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
-  if LatestVersion <> '' then
-  begin
+		LatestVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
     ParallaxURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + LatestVersion + '/Parallax-' + LatestVersion + '.zip';
     ParallaxScatterTexturesURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + LatestVersion + '/Parallax_ScatterTextures-' + LatestVersion + '.zip';
     AddToDownloadList('Gameslinx/Tessellation', '', ExpandConstant('{tmp}\Parallax-' + LatestVersion + '.zip'));
     AddToDownloadList('Gameslinx/Tessellation', '', ExpandConstant('{tmp}\Parallax_ScatterTextures-' + LatestVersion + '.zip'));
+end;
+
+function MoveFolder(const SourcePath, DestPath: String): Boolean;
+var
+  FindRec: TFindRec;
+  SourceFile, DestFile: String;
+begin
+  Result := True;
+  if FindFirst(AddBackslash(SourcePath) + '*', FindRec) then
+  begin
+    try
+      repeat
+        SourceFile := AddBackslash(SourcePath) + FindRec.Name;
+        DestFile := AddBackslash(DestPath) + FindRec.Name;
+
+        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) = FILE_ATTRIBUTE_DIRECTORY then
+        begin
+          if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+          begin
+            if not DirExists(DestFile) then
+            begin
+              if not CreateDir(DestFile) then
+              begin
+                Log('Failed to create destination: ' + DestFile);
+                MsgBox('Failed to create destination: ' + DestFile, mbError, MB_OK);
+                Result := False;
+                Exit;
+              end;
+            end;
+
+            if not MoveFolder(SourceFile, DestFile) then
+            begin
+              Result := False;
+              Exit;
+            end;
+          end;
+        end
+        else
+        begin
+          if not RenameFile(SourceFile, DestFile) then
+          begin
+            Log('Failed to move file: ' + SourceFile + ' to ' + DestFile);
+            MsgBox('Failed to move file: ' + SourceFile + ' to ' + DestFile, mbError, MB_OK);
+            Result := False;
+            Exit;
+          end;
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end
+  else
+  begin
+    Log('Source does not exist: ' + SourcePath);
+    MsgBox('Source does not exist: ' + SourcePath, mbError, MB_OK);
+    Result := False;
+  end;
+end;
+
+procedure MoveGameDataFolders(SourceDir, DestDir: string);
+var
+  FindRec: TFindRec;
+  SourcePath, GameDataPath: string;
+begin
+  SourcePath := AddBackslash(SourceDir);
+
+  if FindFirst(SourcePath + '*', FindRec) then
+  begin
+    try
+      repeat
+        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0) and (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+        begin
+          GameDataPath := AddBackslash(SourcePath) + FindRec.Name + '\GameData';
+          if DirExists(GameDataPath) then
+          begin
+            if not MoveFolder(GameDataPath, DestDir) then
+            begin
+              Log(Format('Failed to move from %s to %s', [GameDataPath, DestDir]));
+              MsgBox(Format('Failed to move from %s to %s', [GameDataPath, DestDir]), mbError, MB_OK);
+            end
+            else
+              Log(Format('Moved GameData from %s to %s', [GameDataPath, DestDir]));
+          end
+          else
+            Log(Format('GameData folder not found in %s', [SourcePath]));
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end
+  else
+  begin
+    Log('Nothing found in ' + SourcePath);
+    MsgBox('Nothing found in ' + SourcePath, mbError, MB_OK);
   end;
 end;
 
 procedure MergeGameDataFolders;
-// After extraction this proc combines all assets into one GameData folder
 var
-  I: Integer;
-  SourceDir, DestDir: string;
+  DownloadsDir, DestDir: string;
 begin
   Log('Starting MergeGameDataFolders');
-  if DownloadList = nil then
-  begin
-    Log('Error: DownloadList is not initialized.');
-    Exit;
-  end;
 
-  Log('DownloadList.Count: ' + IntToStr(DownloadList.Count));
-  if DownloadList.Count = 0 then
-  begin
-    Log('Warning: DownloadList is empty. Nothing to merge.');
-    Exit;
-  end;
+  // Define the Downloads directory
+  DownloadsDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
 
-  Log('Merging GameData folders');
-  DestDir := ExpandConstant('{userdesktop}\MergedGameData');
-
-  for I := 0 to DownloadList.Count - 1 do
+  // Define the destination GameData directory
+  DestDir := DownloadsDir + '\GameData';
+  if not DirExists(DestDir) then
   begin
-    SourceDir := ExpandConstant('{tmp}') + '\' + ExtractFileNameWithoutExt(DownloadList[I]) + '\GameData';
-    Log('Checking if directory exists: ' + SourceDir);
-    if DirExists(SourceDir) then
-    begin
-      Log('Directory exists: ' + SourceDir + '. Moving to ' + DestDir);
-    end
+    if CreateDir(DestDir) then
+      Log('Created: ' + DestDir)
     else
-    begin
-      Log(Format('GameData folder not found in %s', [SourceDir]));
-    end;
+      Log('Failed to create: ' + DestDir);
   end;
+
+  // Move GameData folders from each extracted directory to GameData
+  MoveGameDataFolders(DownloadsDir, DestDir);
+
   Log('Completed MergeGameDataFolders');
 end;
 
@@ -1390,12 +1483,12 @@ begin
   if DirExists(TempDir) then
   begin
     if not DelTree(TempDir, True, True, True) then
-      Log('Failed to clean up temporary files in ' + TempDir)
+      Log('Failed to clean up ' + TempDir)
     else
-      Log('Temporary files cleaned up successfully.');
+      Log('Cleaned up successfully.');
   end
   else
-    Log('No temporary files found to clean up in ' + TempDir);
+    Log('Nothing in ' + TempDir);
 end;
 
 procedure RemoveObsoleteFolders;
@@ -1457,38 +1550,82 @@ end;
 procedure ExtractProc;
 // The proc that calls upon 7 zip
 var
-  I: Integer;
+  I, PartCount: Integer;
   FileName, CurrentLoc, URL, DownloadItem, Dest, EndDest: string;
+  IsMultiPart, ExtractionSuccessful: Boolean;
 begin
   ExtractPage.SetProgress(0, DownloadList.Count);
   for I := 0 to DownloadList.Count - 1 do
   begin
-	  ExtractPage.SetProgress(I, DownloadList.Count);
+    ExtractPage.SetProgress(I, DownloadList.Count);
     DownloadItem := DownloadList[I];
     URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
     FileName := CustomExtractFileName(URL);
     CurrentLoc := DownloadsDir + '\' + FileName;
     
-    if Pos('.7z.00x', FileName) > 0 then
-      Dest := ReplaceSubstring(FileName, '.7z.00x', '')
+    // Determine destination directory name
+    if Pos('.7z.001', FileName) > 0 then
+      Dest := ReplaceSubstring(FileName, '.7z.001', '')
     else if Pos('.7z', FileName) > 0 then
-      Dest := ReplaceSubstring(FileName, '.7z', '');
-			
-	  EndDest := DownloadsDir + '\' + Dest;
-		
-		CurrentFileLabel.Caption := 'Extracting: ' + FileName;
-		WizardForm.Update;
+      Dest := ReplaceSubstring(FileName, '.7z', '')
+    else if Pos('.zip', FileName) > 0 then
+      Dest := ReplaceSubstring(FileName, '.zip', '');
+      
+    EndDest := DownloadsDir + '\' + Dest;
+    
+    CurrentFileLabelE.Caption := 'Extracting: ' + FileName;
+    WizardForm.Update;
 
-    if Extract7Zip(CurrentLoc, EndDest) then
+    IsMultiPart := Pos('.7z.001', FileName) > 0;
+    ExtractionSuccessful := False;
+    
+    // Check if the file is a multi-volume archive part (only .001) or a single archive
+    if IsMultiPart or (Pos('.7z', FileName) > 0) or (Pos('.zip', FileName) > 0) then
     begin
-      Log('Extraction completed for ' + CurrentLoc);
-    end
-    else
+      if Extract7Zip(CurrentLoc, EndDest) then
+      begin
+        Log('Extraction complete:' + CurrentLoc);
+        ExtractionSuccessful := True;
+        
+        // If it's a multi-part archive, check that all parts were extracted
+        if IsMultiPart then
+        begin
+          PartCount := 1;
+          while FileExists(DownloadsDir + '\' + Dest + '.7z.' + Format('%.3d', [PartCount])) do
+            Inc(PartCount);
+            
+          Dec(PartCount); // Subtract one because the loop increments an extra time
+          
+          // Check that all parts are extracted
+          if DirectoryExists(EndDest) then
+          begin
+            Log('Multi-part archive ' + Dest + ' extracted successfully with ' + IntToStr(PartCount) + ' parts.');
+          end
+          else
+          begin
+            Log('Failed to verify extraction of multi-part archive ' + Dest);
+            ExtractionSuccessful := False;
+          end;
+
+          // Skip the remaining parts
+          while (I + 1 < DownloadList.Count) and (Pos(Dest, DownloadList[I + 1]) > 0) do
+            Inc(I);
+        end;
+      end
+      else
+      begin
+        Log('Failed to extract ' + CurrentLoc);
+      end;
+    end;
+    
+    // Handle extraction failure
+    if not ExtractionSuccessful then
     begin
-      Log('Failed to extract ' + CurrentLoc);
+      Log('Extraction process encountered issues for ' + CurrentLoc);
+      MsgBox('Extraction process encountered issues for ' + CurrentLoc, mbError, MB_OK);
     end;
   end;
-	ExtractPage.SetProgress(DownloadList.Count, DownloadList.Count);
+  ExtractPage.SetProgress(DownloadList.Count, DownloadList.Count);
 end;
 
 procedure VerifyDownloadCompletion;
@@ -1523,43 +1660,30 @@ procedure VerifyExtraction;
 // Checks that everything extracted using 7 zip okay
 var
   I: Integer;
-  Entry, TempFile: string;
-  SkippedFiles: TStringList;
-  SkippedFilesMessage: string;
+  Entry, TempFile, ExtractedPath: string;
+  AllFilesExtracted: Boolean;
 begin
-  SkippedFiles := TStringList.Create;
-  try
-    for I := 0 to DownloadList.Count - 1 do
-    begin
-      Entry := DownloadList[I];
-      TempFile := Trim(Copy(Entry, Pos('=', Entry) + 1, Length(Entry)));
-      TempFile := ExpandConstant(TempFile);
+  AllFilesExtracted := True;
+  for I := 0 to DownloadList.Count - 1 do
+  begin
+    Entry := DownloadList[I];
+    TempFile := Trim(Copy(Entry, Pos('=', Entry) + 1, Length(Entry)));
+    ExtractedPath := ChangeFileExt(TempFile, '');
 
-      if not FileExists(TempFile) then
-      begin
-        Log('Error: File not found after extraction: ' + TempFile);
-        SkippedFiles.Add(TempFile);
-      end;
-    end;
-
-    if SkippedFiles.Count > 0 then
+    if not DirectoryExists(ExtractedPath) then
     begin
-      Log('The following files were skipped:');
-      SkippedFilesMessage := 'The following files were skipped during the download and extraction process:'#13#10;
-      for I := 0 to SkippedFiles.Count - 1 do
-      begin
-        Log(SkippedFiles[I]);
-        SkippedFilesMessage := SkippedFilesMessage + SkippedFiles[I] + #13#10;
-      end;
-      MsgBox(SkippedFilesMessage, mbError, MB_OK);
-    end
-    else
-    begin
-      Log('All files verified to be downloaded and extracted successfully.');
+      Log('Error: Extraction failed for: ' + ExtractedPath);
+      AllFilesExtracted := False;
     end;
-  finally
-    SkippedFiles.Free;
   end;
+
+  if not AllFilesExtracted then
+  begin
+    MsgBox('One or more files failed to extract. Please check the logs for details.', mbError, MB_OK);
+    Exit;
+  end;
+
+  Log('All files extracted successfully.');
 end;
 
 procedure OnDownloadComplete;
@@ -1654,8 +1778,8 @@ begin
 
     // Ensure the correct destination path
     Dest := DownloadsDir + '\' + FileName;
-
-    CurrentFileLabel.Caption := 'Downloading: ' + FileName;
+		
+		CurrentFileLabel.Caption := 'Downloading: ' + FileName;
 		WizardForm.Update;
     Log('Downloading ' + URL + ' to ' + Dest);
 
