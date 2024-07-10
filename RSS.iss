@@ -779,8 +779,10 @@ end;
 function ExtractResolution(AssetName: String): String;
 // Extracts resolution information from asset names.
 var
-  UnderscorePos, DashPos, DelimiterPos: Integer;
+  UnderscorePos, DashPos, DotPos, DelimiterPos: Integer;
   Resolution: String;
+  ContainsDigit: Boolean;
+  I: Integer;
 begin
   Resolution := '';
 
@@ -794,21 +796,42 @@ begin
   else
     DelimiterPos := DashPos;
 
-  if DelimiterPos > 0 then
+  // Find the position of the last dot before the file extension
+  DotPos := LastDelimiter('.', AssetName);
+  if DotPos > 0 then
   begin
-    // Extract numeric characters from the filename starting after the delimiter
-    Inc(DelimiterPos); 
-    while (DelimiterPos <= Length(AssetName)) do
+    // Check for multi-volume archives
+    if Copy(AssetName, DotPos - 3, 4) = '.7z.' then
+      DotPos := DotPos - 4;
+
+    if DelimiterPos > 0 then
     begin
-      if (AssetName[DelimiterPos] >= '0') and (AssetName[DelimiterPos] <= '9') or (AssetName[DelimiterPos] = 'k') then
-      begin
-        Resolution := Resolution + AssetName[DelimiterPos];
-        Inc(DelimiterPos);
-      end
-      else
-        Break; 
+      // Extract the substring between the delimiter and the last dot before the extension
+      Resolution := Copy(AssetName, DelimiterPos + 1, DotPos - DelimiterPos - 1);
     end;
   end;
+
+  // Exclude any resolution with "scale"
+  if Pos('scale', LowerCase(Resolution)) > 0 then
+    Resolution := '';
+
+  // Ensure the resolution contains at least one digit or "NoModels"
+  ContainsDigit := False;
+  for I := 1 to Length(Resolution) do
+  begin
+    if (Resolution[I] >= '0') and (Resolution[I] <= '9') then
+    begin
+      ContainsDigit := True;
+      Break;
+    end;
+  end;
+  
+  if not ContainsDigit and (Pos('NoModels', Resolution) = 0) then
+    Resolution := '';
+
+  // Append "k" to numeric resolutions if not present
+  if (Resolution <> '') and (Resolution[Length(Resolution)] <> 'k') and ContainsDigit then
+    Resolution := Resolution + 'k';
 
   // Return the extracted resolution
   Result := Resolution;
@@ -859,7 +882,7 @@ begin
   Log('Retrieving body info');
   SetLength(BodyVersions, Length(BodyRepos));
   SetLength(BodySizes, Length(BodyRepos));
-  SetLength(AssetDataList, Length(BodyRepos)); // Ensure AssetDataList is properly initialized
+  SetLength(AssetDataList, Length(BodyRepos)); 
 
   for I := 0 to High(BodyRepos) do
   begin
@@ -947,13 +970,13 @@ begin
           Resolution := ExtractResolution(AssetName);
           Log('Found asset: ' + AssetName + ' with resolution: ' + Resolution);
 
-          // Exclude files with "NoModels" or "Scaled" in the name
-					if (Pos('NoModels', AssetName) > 0) or (Pos('Scaled', AssetName) > 0) then
-					begin
-						Log('Skipping asset: ' + AssetName + ' due to exclusion criteria.');
-						StartPos := J + 1;
-						Continue;
-					end;
+          // Exclude files with "scale" in the name
+          if (Pos('scale', LowerCase(AssetName)) > 0) then
+          begin
+            Log('Skipping asset: ' + AssetName + ' due to exclusion criteria.');
+            StartPos := J + 1;
+            Continue;
+          end;
 
           Size := 0;
           I := PosEx('"size":', LatestReleaseAssetsJSON, J);
@@ -999,7 +1022,6 @@ begin
     AddedResolutions.Free;
   end;
 end;
-
 
 procedure ComboBoxChange(Sender: TObject);
 // Proc to assist in instant UI updates based on user input
@@ -1165,9 +1187,9 @@ begin
 		// Resolution Drop Down
     ComboBox := TComboBox.Create(Page);
     ComboBox.Parent := Page.Surface;
-    ComboBox.Left := ScaleX(150);
+    ComboBox.Left := ScaleX(100);
     ComboBox.Top := ScaleY(PageHeight);
-    ComboBox.Width := ScaleX(50);
+    ComboBox.Width := ScaleX(100);
     ComboBox.OnChange := @ComboBoxChange;
     ComboBox.Tag := I;
     ResolutionCombos[I] := ComboBox;
@@ -1359,7 +1381,6 @@ begin
   if FindFirst(AddBackslash(SourcePath) + '*', FindRec) then
   begin
     try
-      repeat
         SourceFile := AddBackslash(SourcePath) + FindRec.Name;
         DestFile := AddBackslash(DestPath) + FindRec.Name;
 
@@ -1377,7 +1398,6 @@ begin
                 Exit;
               end;
             end;
-
             if not MoveFolder(SourceFile, DestFile) then
             begin
               Result := False;
@@ -1395,7 +1415,6 @@ begin
             Exit;
           end;
         end;
-      until not FindNext(FindRec);
     finally
       FindClose(FindRec);
     end;
@@ -1447,6 +1466,65 @@ begin
   end;
 end;
 
+procedure MoveSpecialFolders(SourceDir, DestDir: string);
+var
+  ParallaxVersion, ParallaxSource, ParallaxDest, ParallaxScatterVersion, ParallaxScatterSource, ParallaxScatterDest: string;
+begin
+  Log('Starting MoveSpecialFolders');
+
+  // Get the latest version for Parallax and Parallax_ScatterTextures from cache
+  ParallaxVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
+  ParallaxScatterVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
+
+  // Define the source and destination paths for Parallax
+  ParallaxSource := AddBackslash(SourceDir) + 'Parallax-' + ParallaxVersion;
+  ParallaxDest := AddBackslash(DestDir) + 'GameData\Parallax';
+  if DirExists(ParallaxSource) then
+  begin
+    if not DirExists(ParallaxDest) then
+    begin
+      if CreateDir(ParallaxDest) then
+        Log('Created directory: ' + ParallaxDest)
+      else
+        Log('Failed to create directory: ' + ParallaxDest);
+    end;
+
+    if MoveFolder(ParallaxSource, ParallaxDest) then
+      Log('Moved Parallax folder to ' + ParallaxDest)
+    else
+      Log('Failed to move Parallax folder to ' + ParallaxDest);
+  end
+  else
+  begin
+    Log('Parallax folder does not exist in ' + ParallaxSource);
+  end;
+
+  // Define the source and destination paths for Parallax_ScatterTextures
+  ParallaxScatterSource := AddBackslash(SourceDir) + 'Parallax_ScatterTextures-' + ParallaxScatterVersion;
+  ParallaxScatterDest := AddBackslash(DestDir) + 'GameData\Parallax_StockTextures';
+  if DirExists(ParallaxScatterSource) then
+  begin
+    if not DirExists(ParallaxScatterDest) then
+    begin
+      if CreateDir(ParallaxScatterDest) then
+        Log('Created directory: ' + ParallaxScatterDest)
+      else
+        Log('Failed to create directory: ' + ParallaxScatterDest);
+    end;
+
+    if MoveFolder(ParallaxScatterSource, ParallaxScatterDest) then
+      Log('Moved Parallax_ScatterTextures folder to ' + ParallaxScatterDest)
+    else
+      Log('Failed to move Parallax_ScatterTextures folder to ' + ParallaxScatterDest);
+  end
+  else
+  begin
+    Log('Parallax_StockTextures folder does not exist in ' + ParallaxScatterSource);
+  end;
+
+  Log('Completed MoveSpecialFolders');
+end;
+
 procedure MergeGameDataFolders;
 var
   DownloadsDir, DestDir: string;
@@ -1468,6 +1546,7 @@ begin
 
   // Move GameData folders from each extracted directory to GameData
   MoveGameDataFolders(DownloadsDir, DestDir);
+	MoveSpecialFolders(DownloadsDir, DestDir);
 
   Log('Completed MergeGameDataFolders');
 end;
@@ -1640,7 +1719,7 @@ begin
   begin
     Entry := DownloadList[I];
     TempFile := Trim(Copy(Entry, Pos('=', Entry) + 1, Length(Entry)));
-    if not FileExists(ExpandConstant('{tmp}\') + ExtractFileName(TempFile)) then
+    if not FileExists(DownloadsDir + '\' + ExtractFileName(TempFile)) then
     begin
       Log('Error: File not downloaded: ' + TempFile);
       AllFilesDownloaded := False;
@@ -1653,11 +1732,22 @@ begin
     Exit;
   end;
 
+  // We don't want stock textures, duh
+  if DirectoryExists(DownloadsDir + '\Parallax_StockTextures') then
+  begin
+    if not DelTree(DownloadsDir + '\Parallax_StockTextures', True, True, True) then
+      Log('Failed to delete Parallax_StockTextures directory.')
+    else
+      Log('Parallax_StockTextures directory deleted.')
+  end
+  else
+    Log('Parallax_StockTextures directory does not exist.');
+
   Log('All files downloaded successfully.');
 end;
 
 procedure VerifyExtraction;
-// Checks that everything extracted using 7 zip okay
+// Checks that everything extracted using 7-Zip okay
 var
   I: Integer;
   Entry, TempFile, ExtractedPath: string;
@@ -1668,7 +1758,7 @@ begin
   begin
     Entry := DownloadList[I];
     TempFile := Trim(Copy(Entry, Pos('=', Entry) + 1, Length(Entry)));
-    ExtractedPath := ChangeFileExt(TempFile, '');
+    ExtractedPath := ChangeFileExt(DownloadsDir + '\' + ExtractFileName(TempFile), '');
 
     if not DirectoryExists(ExtractedPath) then
     begin
@@ -1692,8 +1782,7 @@ procedure OnDownloadComplete;
 begin
   try
     VerifyDownloadCompletion;
-    VerifyExtraction;
-    Log('Download and extraction process completed');
+    Log('Download process completed');
   except
     Log('Post-download steps failed: Unexpected error occurred.');
     MsgBox('Post-download steps failed. Please check the logs for details.', mbError, MB_OK);
@@ -1865,6 +1954,7 @@ begin
       end;
 			DownloadAllFiles;
 		finally
+			OnDownloadComplete;
 		  DownloadPage.Hide;
 			ExtractPage.Show;
 		end
@@ -1877,6 +1967,7 @@ begin
         Exit;
       end;
 		finally
+		  VerifyExtraction;
 		  ExtractPage.Hide;
 		end;
 
