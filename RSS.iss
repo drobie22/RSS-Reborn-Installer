@@ -111,6 +111,7 @@ begin
 end;
 
 function Is7ZipInstalled: Boolean;
+// Function to assist 7Zip  Init
 begin
   Result := FileExists('C:\Program Files\7-Zip\7z.exe') or FileExists('C:\Program Files (x86)\7-Zip\7z.exe');
   if Result then
@@ -148,6 +149,7 @@ begin
 end;
 
 function InitializeSetup: Boolean;
+// Begin the sequence by checking for space and 7 zip
 begin
   Result := True;
   if not IsEnoughDiskSpaceAvailable then
@@ -179,6 +181,7 @@ begin
 end;
 
 procedure LogDownloadListDetails;
+// Optional Logging for listing downloads before execution 
 var
   I: Integer;
   Entry, URL, FileName: string;
@@ -195,8 +198,8 @@ begin
 end;
 
 function ReadGitHubAccessToken: string;
-// Reads the GitHub access token from the environment variable if it exists.
-// Allows more downloads per hour
+// Reads the GitHub access token from the environment variable if it exists
+// Allows users to have downloads per hour
 begin
   Result := GetEnv('MY_ACCESS_TOKEN');
   if Result <> '' then
@@ -209,7 +212,7 @@ procedure DeinitializeVariables;
 // Frees allocated resources. Prevents memory leaks by releasing resources.
 begin
   DownloadList.Free;
-  CachedReleaseInfo.Free; // Free cache
+  CachedReleaseInfo.Free; 
 end;
 
 function SendMessage(hWnd: LongInt; Msg: LongInt; wParam: LongInt; lParam: LongInt): LongInt;
@@ -223,6 +226,12 @@ var
 begin
   Result := FindFirst(AddBackslash(Dir) + '*.*', FindRec);
   FindClose(FindRec);
+end;
+
+function FormatSize(SizeInBytes: Integer): string;
+// Converts file sizes from bytes to MB.
+begin
+  Result := IntToStr(Round(SizeInBytes / 1048576)) + ' MB'; 
 end;
 	
 function IsDirectoryEmpty(DirPath: string): Boolean;
@@ -258,6 +267,7 @@ begin
 end;
 
 function ReplaceSubstring(const S, OldPattern, NewPattern: string): string;
+// Helper function
 var
   PosStart: Integer;
 begin
@@ -267,7 +277,7 @@ begin
   begin
     Delete(Result, PosStart, Length(OldPattern));
     Insert(NewPattern, Result, PosStart);
-    PosStart := Pos(OldPattern, Result); // Find the next occurrence
+    PosStart := Pos(OldPattern, Result); 
   end;
 end;
 
@@ -283,6 +293,7 @@ begin
 end;
 
 function CustomExtractFileName(DownloadURL: string): string;
+// Helper function
 var
   FileNameStartPos: Integer;
 begin
@@ -308,7 +319,7 @@ begin
     end;
     Inc(I);
   end;
-  Result := -1; // Return -1 if not found
+  Result := -1; 
 end;
 
 function LastCharPos(const Substr: string; const S: string): Integer;
@@ -348,13 +359,61 @@ begin
   if LastSlashPos > 0 then
     BodyName := Copy(Repo, LastSlashPos + 1, Length(Repo) - LastSlashPos)
   else
-    BodyName := Repo;  // Fallback in case there is no slash
+    BodyName := Repo;  
   
   // Remove the 'RSS-' prefix if it exists
   if Pos('RSS-', BodyName) = 1 then
     Delete(BodyName, 1, Length('RSS-'));
   
   Result := BodyName;
+end;
+
+function DateToDays(Year, Month, Day: Integer): Int64;
+// Helper Function
+var
+  A, Y, M: Int64;
+begin
+  A := (14 - Month) div 12;
+  Y := Year + 4800 - A;
+  M := Month + 12 * A - 3;
+  Result := Day + ((153 * M + 2) div 5) + (365 * Y) + (Y div 4) - (Y div 100) + (Y div 400) - 32045;
+end;
+
+function GetCurrentUnixTime: Int64;
+// Helper Function
+var
+  DateTimeStr: string;
+  Year, Month, Day, Hour, Minute, Second: Integer;
+  DaysSinceUnixEpoch: Int64;
+  SecondsInCurrentDay: Int64;
+begin
+  DateTimeStr := GetDateTimeString('yyyy-mm-dd hh:nn:ss', #0, #0);
+  // Extract year, month, day, hour, minute, second
+  Year := StrToInt(Copy(DateTimeStr, 1, 4));
+  Month := StrToInt(Copy(DateTimeStr, 6, 2));
+  Day := StrToInt(Copy(DateTimeStr, 9, 2));
+  Hour := StrToInt(Copy(DateTimeStr, 12, 2));
+  Minute := StrToInt(Copy(DateTimeStr, 15, 2));
+  Second := StrToInt(Copy(DateTimeStr, 18, 2));
+
+  // Calculate days since Unix epoch (January 1, 1970)
+  DaysSinceUnixEpoch := DateToDays(Year, Month, Day) - DateToDays(1970, 1, 1);
+  // Calculate seconds in the current day
+  SecondsInCurrentDay := (Hour * SECONDS_IN_AN_HOUR) + (Minute * SECONDS_IN_A_MINUTE) + Second;
+
+  // Calculate total Unix time
+  Result := (DaysSinceUnixEpoch * SECONDS_IN_A_DAY) + SecondsInCurrentDay;
+end;
+
+function SecondsToTimeStr(Seconds: Int64): string;
+// Helper Function 
+var
+  Days, Hours, Minutes: Int64;
+begin
+  Days := Seconds div SECONDS_IN_A_DAY;
+  Hours := (Seconds mod SECONDS_IN_A_DAY) div SECONDS_IN_AN_HOUR;
+  Minutes := (Seconds mod SECONDS_IN_AN_HOUR) div SECONDS_IN_A_MINUTE;
+  Result := Format('%d days, %d hours, %d minutes', [Days, Hours, Minutes]);
 end;
 
 procedure InitializeBodyRepos;
@@ -378,6 +437,7 @@ begin
 end;
 
 function Extract7Zip(ArchivePath, DestDir: string): Boolean;
+// Use user's 7zip to unzip files
 var
   ZipPath: string;
   ResultCode: Integer;
@@ -425,13 +485,8 @@ begin
   Result := True;
 end;
 
-function FormatSize(SizeInBytes: Integer): string;
-// Converts file sizes from bytes to MB.
-begin
-  Result := IntToStr(Round(SizeInBytes / 1048576)) + ' MB'; // Convert bytes to MB and format
-end;
-
 function GetCachedJSONForRepo(Repo: string; var ReleaseJSON: string; var AssetsJSON: string): Boolean;
+// Assists call to github for caching info locally to minimize http calls
 var
   i: Integer;
   KeyValue: TStringList;
@@ -478,51 +533,6 @@ begin
 
   if TotalSize > 0 then
     Result := FormatSize(TotalSize); // Ensure this formats to MB
-end;
-
-function DateToDays(Year, Month, Day: Integer): Int64;
-var
-  A, Y, M: Int64;
-begin
-  A := (14 - Month) div 12;
-  Y := Year + 4800 - A;
-  M := Month + 12 * A - 3;
-  Result := Day + ((153 * M + 2) div 5) + (365 * Y) + (Y div 4) - (Y div 100) + (Y div 400) - 32045;
-end;
-
-function GetCurrentUnixTime: Int64;
-var
-  DateTimeStr: string;
-  Year, Month, Day, Hour, Minute, Second: Integer;
-  DaysSinceUnixEpoch: Int64;
-  SecondsInCurrentDay: Int64;
-begin
-  DateTimeStr := GetDateTimeString('yyyy-mm-dd hh:nn:ss', #0, #0);
-  // Extract year, month, day, hour, minute, second
-  Year := StrToInt(Copy(DateTimeStr, 1, 4));
-  Month := StrToInt(Copy(DateTimeStr, 6, 2));
-  Day := StrToInt(Copy(DateTimeStr, 9, 2));
-  Hour := StrToInt(Copy(DateTimeStr, 12, 2));
-  Minute := StrToInt(Copy(DateTimeStr, 15, 2));
-  Second := StrToInt(Copy(DateTimeStr, 18, 2));
-
-  // Calculate days since Unix epoch (January 1, 1970)
-  DaysSinceUnixEpoch := DateToDays(Year, Month, Day) - DateToDays(1970, 1, 1);
-  // Calculate seconds in the current day
-  SecondsInCurrentDay := (Hour * SECONDS_IN_AN_HOUR) + (Minute * SECONDS_IN_A_MINUTE) + Second;
-
-  // Calculate total Unix time
-  Result := (DaysSinceUnixEpoch * SECONDS_IN_A_DAY) + SecondsInCurrentDay;
-end;
-
-function SecondsToTimeStr(Seconds: Int64): string;
-var
-  Days, Hours, Minutes: Int64;
-begin
-  Days := Seconds div SECONDS_IN_A_DAY;
-  Hours := (Seconds mod SECONDS_IN_A_DAY) div SECONDS_IN_AN_HOUR;
-  Minutes := (Seconds mod SECONDS_IN_AN_HOUR) div SECONDS_IN_A_MINUTE;
-  Result := Format('%d days, %d hours, %d minutes', [Days, Hours, Minutes]);
 end;
 
 procedure CheckRateLimit;
@@ -578,11 +588,14 @@ begin
 end;
 
 procedure GetLatestReleaseHTTPInfo(Repo: string);
+// Actual call to get information to cache
 var
   HttpCli: Variant;
   I, J: Integer;
   CombinedResponse, CachedData: string;
 begin
+
+	//Start by checking if cached info already exists
   if GetCachedJSONForRepo(Repo, LatestReleaseJSON, LatestReleaseAssetsJSON) then
   begin
     Log('Using cached release info for ' + Repo);
@@ -633,8 +646,9 @@ begin
         LatestReleaseAssetsJSON := Copy(CombinedResponse, I, J - I);
       end;
 
+			// Cache the combined JSON responses
       CachedData := Repo + '=' + LatestReleaseJSON + '|' + LatestReleaseAssetsJSON;
-      CachedReleaseInfo.Add(CachedData); // Cache the combined JSON responses
+      CachedReleaseInfo.Add(CachedData); 
     end
     else
     begin
@@ -669,8 +683,8 @@ var
   AssetURLs: TStringList;
 begin
   Result := '';
-  Version := LatestReleaseVersion; // Use the version stored by GetLatestReleaseHTTPInfo
-  Size := GetFileSizeForLatestReleaseFromAssets(LatestReleaseAssetsJSON); // Use the size calculation function
+  Version := LatestReleaseVersion; 
+  Size := GetFileSizeForLatestReleaseFromAssets(LatestReleaseAssetsJSON); 
   AssetURLs := TStringList.Create;
 
   StartPos := 1;
@@ -710,7 +724,7 @@ begin
     for I := 0 to AssetURLs.Count - 1 do
     begin
       if I > 0 then
-        Result := Result + #13#10; // Add a line break between URLs
+        Result := Result + #13#10; 
       Result := Result + AssetURLs[I];
     end;
   end;
@@ -767,7 +781,7 @@ begin
   if DelimiterPos > 0 then
   begin
     // Extract numeric characters from the filename starting after the delimiter
-    Inc(DelimiterPos); // Move past the delimiter
+    Inc(DelimiterPos); 
     while (DelimiterPos <= Length(AssetName)) do
     begin
       if (AssetName[DelimiterPos] >= '0') and (AssetName[DelimiterPos] <= '9') or (AssetName[DelimiterPos] = 'k') then
@@ -776,7 +790,7 @@ begin
         Inc(DelimiterPos);
       end
       else
-        Break; // Stop loop if character is not a digit or 'k'
+        Break; 
     end;
   end;
 
@@ -785,6 +799,7 @@ begin
 end;
 
 function GetLatestReleaseVersion(Repo: string): string;
+//Extracts release information from cached data
 var
   ReleaseJSON, AssetsJSON: string;
   I, J: Integer;
@@ -820,6 +835,7 @@ begin
 end;
 
 procedure RetrieveBodyInfo;
+// Combined proc to call version size and asset functions
 var
   I: Integer;
   ReleaseJSON, AssetsJSON: string;
@@ -853,13 +869,12 @@ begin
     BodySizes[I] := GetFileSizeForLatestReleaseFromAssets(AssetsJSON);
 
     if Assigned(AssetDataList[I]) then
-      AssetDataList[I].Free; // Free previously assigned TStringList
+      AssetDataList[I].Free; 
 
     AssetDataList[I] := TStringList.Create;
     AssetDataList[I].Text := AssetsJSON;
   end;
 end;
-
 
 procedure UpdateSizeLabel(ComboBoxTag: Integer);
 // Updates the label showing the total size of selected resolutions.
@@ -878,6 +893,7 @@ begin
 end;
 
 procedure PopulateResolutions(ComboBox: TComboBox; RepoIndex: Integer; var Sizes: TStringList);
+// Takes cached data and extracts information for the UI
 var
   I, J, StartPos: Integer;
   AssetName, Resolution: string;
@@ -918,14 +934,14 @@ begin
           if Pos('NoModels', AssetName) > 0 then
           begin
             StartPos := J + 1;
-            Continue; // Skip this asset
+            Continue;
           end;
 					
 					// Exclude files with "Scaled" in the name
           if Pos('Scaled', AssetName) > 0 then
           begin
             StartPos := J + 1;
-            Continue; // Skip this asset
+            Continue; 
           end;
 					
           Size := 0;
@@ -939,7 +955,7 @@ begin
 
             if Resolution <> '' then
             begin
-              // Check if the exact AssetName (excluding NoModels) exists in AddedResolutions
+              // Check if the exact AssetName exists in AddedResolutions
               if AddedResolutions.IndexOf(AssetName) = -1 then
               begin
                 ComboBox.Items.Add(Resolution);
@@ -973,6 +989,7 @@ begin
 end;
 
 procedure ComboBoxChange(Sender: TObject);
+// Proc to assist in instant UI updates based on user input
 var
   ComboBox: TComboBox;
   Index: Integer;
@@ -1029,7 +1046,7 @@ begin
   begin
     Log('RP-1 confirmation not checked');
     MsgBox('Please confirm that you have installed and launched RP-1 at least once. RSS Reborn will not work if RP-1 does not work.', mbError, MB_OK);
-    Result := False; // Prevents proceeding to the next wizard page
+    Result := False; 
   end
   else
   begin
@@ -1044,6 +1061,7 @@ begin
 end;
 
 procedure InitializeWizard;
+// Initialize the UI
 var
   I: Integer;
   ComboBox: TComboBox;
@@ -1057,11 +1075,13 @@ begin
   InitializeVariables;
 	InitializeArrayLengths;
   
-  // Read GitHub access token from the registry
+  // Read GitHub access token from the registry if it exists
   MyAccessToken := ReadGitHubAccessToken;
 
+	//Get information ready for the UI
   RetrieveBodyInfo;
 
+	// Checkbox on welcome page
   RP1Checkbox := TNewCheckBox.Create(WizardForm);
   RP1Checkbox.Parent := WizardForm.WelcomePage;
   RP1Checkbox.Left := ScaleX(18);
@@ -1072,6 +1092,7 @@ begin
   RP1Checkbox.Checked := False;
   Log('RP-1 installation confirmation checkbox created');
 
+	// Checkbox on welcome page
   EVEAndScattererCheckbox := TNewCheckBox.Create(WizardForm);
   EVEAndScattererCheckbox.Parent := WizardForm.WelcomePage;
   EVEAndScattererCheckbox.Left := ScaleX(18);
@@ -1082,14 +1103,16 @@ begin
   EVEAndScattererCheckbox.Checked := False;
   Log('EVE and Scatterer download confirmation checkbox created');
   
-  // Create and configure the KSP directory input page
+  // KSP directory input page
   KSPDirPage := CreateInputDirPage(wpWelcome, 'KSP Directory', 'Select the KSP directory', 'Please select the directory where Kerbal Space Program is installed.', False, '');
   KSPDirPage.Add('');
   KSPDirPage.Values[0] := 'C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program\GameData';  // Set the default directory
 
+	// Resolution input page
   Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
   wpSelectResolutions := Page.ID;
 
+	// Download Progress Bar Page
   DownloadPage := CreateOutputProgressPage('Downloading Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
   CurrentFileLabel := TNewStaticText.Create(DownloadPage);
   CurrentFileLabel.Parent := DownloadPage.Surface;
@@ -1098,6 +1121,7 @@ begin
   CurrentFileLabel.Width := DownloadPage.SurfaceWidth - ScaleX(16);
   CurrentFileLabel.Caption := 'Initializing download...';
 	
+	// Extraction Progress Bar Page 
 	ExtractPage := CreateOutputProgressPage('Extracting Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
   CurrentFileLabelE := TNewStaticText.Create(ExtractPage);
   CurrentFileLabelE.Parent := ExtractPage.Surface;
@@ -1115,14 +1139,17 @@ begin
 
   PageHeight := 0;
 
+	//Processing for Resolutions Page
   for I := 0 to High(BodyRepos) do
   begin
+		// Body Name
     BodyLabel := TLabel.Create(Page);
     BodyLabel.Parent := Page.Surface;
     BodyLabel.Left := ScaleX(8);
     BodyLabel.Top := ScaleY(PageHeight);
     BodyLabel.Caption := ExtractBodyName(BodyRepos[I]);
 
+		// Resolution Drop Down
     ComboBox := TComboBox.Create(Page);
     ComboBox.Parent := Page.Surface;
     ComboBox.Left := ScaleX(150);
@@ -1137,6 +1164,7 @@ begin
 
     Log('Dropdown for ' + BodyRepos[I] + ' created');
 
+		// Texture Version No.
     VersionLabel := TLabel.Create(Page);
     VersionLabel.Parent := Page.Surface;
     VersionLabel.Left := ScaleX(275);
@@ -1144,6 +1172,7 @@ begin
     if I < Length(BodyVersions) then
       VersionLabel.Caption := 'Version: ' + BodyVersions[I];
 
+		// Approx size of download, sum of all assets in Resolution Pack
     SizeLabel := TLabel.Create(Page);
     SizeLabel.Parent := Page.Surface;
     SizeLabel.Left := ScaleX(420);
@@ -1166,6 +1195,7 @@ begin
 end;
 
 function GetRepoDownloadURLs(Repo, Resolution: string): TStringList;
+// Pulls direct download links from a repo's cache
 var
   AssetName, BrowserDownloadURL: string;
   I, J, StartPos: Integer;
@@ -1222,6 +1252,7 @@ begin
 end;
 
 procedure AddToDownloadList(RepoName, Resolution, DestFilePath: string);
+// Proc to add direct download URL to a queue, executed later
 var
   DownloadURLs: TStringList;
   BrowserDownloadURL: string;
@@ -1260,6 +1291,7 @@ begin
 end;
 
 procedure InitializeDownloadList;
+// Adds non-body repos to download list
 var
   LatestVersion: string;
   ParallaxURL, ParallaxScatterTexturesURL: string;
@@ -1289,11 +1321,11 @@ begin
   if not EVEAndScattererCheckbox.Checked then
   AddToDownloadList('RSS-Reborn/RSSVE-Textures', '', ExpandConstant('{tmp}\RSSVE_Textures.7z'));
 
-  // Scatterer (if not already downloaded by user)
+  // Scatterer (if not using Blackrack's)
   if not ScattererDownloaded then
     AddToDownloadList('LGhassen/Scatterer', '', ExpandConstant('{tmp}\Scatterer.zip'));
 
-  // EVE (if not already downloaded by user)
+  // EVE (if not using Blackrack's)
   if not EVEDownloaded then
     AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', ExpandConstant('{tmp}\EVE.zip'));
 
@@ -1309,6 +1341,7 @@ begin
 end;
 
 procedure MergeGameDataFolders;
+// After extraction this proc combines all assets into one GameData folder
 var
   I: Integer;
   SourceDir, DestDir: string;
@@ -1353,7 +1386,7 @@ var
   TempDir: string;
 begin
   TempDir := ExpandConstant('{tmp}');
-  Log('Cleaning up temporary files in ' + TempDir);  // Add more descriptive logging
+  Log('Cleaning up temporary files in ' + TempDir);  
   if DirExists(TempDir) then
   begin
     if not DelTree(TempDir, True, True, True) then
@@ -1422,6 +1455,7 @@ begin
 end;
 
 procedure ExtractProc;
+// The proc that calls upon 7 zip
 var
   I: Integer;
   FileName, CurrentLoc, URL, DownloadItem, Dest, EndDest: string;
@@ -1458,6 +1492,7 @@ begin
 end;
 
 procedure VerifyDownloadCompletion;
+// Checks that everything downloaded okay
 var
   I: Integer;
   Entry, TempFile: string;
@@ -1484,7 +1519,8 @@ begin
   Log('All files downloaded successfully.');
 end;
 
-procedure VerifyDownloadAndExtraction;
+procedure VerifyExtraction;
+// Checks that everything extracted using 7 zip okay
 var
   I: Integer;
   Entry, TempFile: string;
@@ -1527,10 +1563,12 @@ begin
 end;
 
 procedure OnDownloadComplete;
+// Calls checks to be completed after download and extraction
+// Can probably just call verify extraction if needed
 begin
   try
     VerifyDownloadCompletion;
-    VerifyDownloadAndExtraction;
+    VerifyExtraction;
     Log('Download and extraction process completed');
   except
     Log('Post-download steps failed: Unexpected error occurred.');
@@ -1540,6 +1578,7 @@ begin
 end;
 
 procedure StartInstallation;
+// Ensures RP-1 checkbox was checked by user before removing folders
 begin
   Log('Starting RSS Reborn installation process.');
   InitializeDownloadsDir;
@@ -1554,6 +1593,7 @@ begin
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
+// When user changes the UI page, checks are made
 begin
   Log('Next button clicked, CurPageID: ' + IntToStr(CurPageID));
   Result := True; // Allow navigation by default
@@ -1581,6 +1621,7 @@ begin
 end;
 
 procedure ClearDownloadDirectory;
+// Frees up space and prevents conflicts
 begin;
 	if DirectoryExists(DownloadsDir) then
     if not DelTree(DownloadsDir, True, True, True) then
@@ -1595,6 +1636,7 @@ function URLDownloadToFile(Caller: Integer; URL: PAnsiChar; FileName: PAnsiChar;
   external 'URLDownloadToFileA@urlmon.dll stdcall';
 
 procedure DownloadAllFiles;
+// The full procedure that executes the download list
 var
   URL, Dest, FileName, DownloadItem: String;
   I: Integer;
@@ -1604,6 +1646,7 @@ begin
   for I := 0 to DownloadList.Count - 1 do
   begin
     DownloadPage.SetProgress(I, DownloadList.Count);
+		
     // Extract URL and TempFile from DownloadList
     DownloadItem := DownloadList[I];
     URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
@@ -1633,6 +1676,7 @@ begin
 end;
 
 function InitializeDownloads: Boolean;
+// Helper function to call proc, returns error if it cannot execute 
 begin
   Result := True;
   try
@@ -1646,6 +1690,7 @@ begin
 end;
 
 function ExtractFiles: Boolean;
+// Helper function to call proc, returns error if it cannot execute 
 begin
   Result := True;
   try
@@ -1658,6 +1703,7 @@ begin
 end;
 
 function MergeGameData: Boolean;
+// Helper function to call proc, returns error if it cannot execute 
 begin
   Result := True;
   try
@@ -1672,13 +1718,14 @@ end;
 procedure DeinitializeSetup;
 // Cleans up resources and temporary files after installation.
 begin
-  Log('Deinitializing setup and cleaning up resources');  // Ensure complete logging
+  Log('Deinitializing setup and cleaning up resources');  
   CleanupTemporaryFiles;
 	//ClearDownloadDirectory;
   DeinitializeVariables;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+// Actual process steps for installation
 begin
   if CurStep = ssInstall then
   begin
