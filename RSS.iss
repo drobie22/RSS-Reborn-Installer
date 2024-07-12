@@ -63,6 +63,7 @@ var
   BodyRepos: array[0..11] of string;
   BodySizes: array of string;	
 	BodyVersions: array of string;
+	BodiesWithNoAssets: TStringList;
 	CachedReleaseInfo: TStringList;
 	CurrentFileLabel: TNewStaticText;
 	CurrentFileLabelE: TNewStaticText;
@@ -77,12 +78,13 @@ var
   KSPDirPage: TInputDirWizardPage;
 	DownloadPage: TOutputProgressWizardPage;
 	ExtractPage: TOutputProgressWizardPage;
+	MergePage: TOutputProgressWizardPage;
 	LatestReleaseAssetsJSON: string;
 	LatestReleaseJSON: string;
   LatestReleaseVersion: string;
 	MyAccessToken: string;
+	NoAssetsFound: Boolean;
 	ParallaxVersion: string;
-	ParallaxScatterTexturesURL: string;
   ResolutionCombos: array of TComboBox;
   RP1Checkbox: TNewCheckBox;
 	Sizes: array of Int64;
@@ -122,6 +124,10 @@ begin
   if Assigned(GitHubCount) then
     GitHubCount.Free;
   GitHubCount := TStringList.Create;
+	
+	if Assigned(BodiesWithNoAssets) then
+    BodiesWithNoAssets.Free;
+  BodiesWithNoAssets := TStringList.Create;
 
   UserCanceled := False;
   Log('Variables initialized.');
@@ -196,41 +202,6 @@ begin
       Log('Failed to create download directory: ' + DownloadsDir);
   end;
   Log('Downloads directory initialized: ' + DownloadsDir);
-end;
-
-procedure InitializeCache;
-begin
-  CachedReleaseInfo := TStringList.Create;
-  
-  // Check if the cache file exists
-  if FileExists('CacheData.txt') then
-  begin
-    try
-      // Load existing cache from file if available
-      CachedReleaseInfo.LoadFromFile('CacheData.txt');
-      Log('Loaded existing cache data.');
-    except
-        Log('Error loading cache data: ');
-    end;
-  end
-  else
-  begin
-    try
-      // Create the cache file if it doesn't exist
-      CachedReleaseInfo.SaveToFile('CacheData.txt');
-      Log('Cache file not found. Created new cache file.');
-    except
-        Log('Error creating cache file: ');
-    end;
-  end;
-end;
-
-procedure SaveCache;
-begin
-  // Save cache to file
-  CachedReleaseInfo.SaveToFile('CacheData.txt');
-  CachedReleaseInfo.Free;
-  Log('Cache data saved and memory freed.');
 end;
 
 procedure ClearDownloadDirectory;
@@ -586,20 +557,21 @@ begin
   Result := True;
 end;
 
-function GetCachedJSONForRepo(Repo: string; var ReleaseJSON: string; var AssetsJSON: string): Boolean;
+function GetCachedJSONForRepo(Repo, Resolution: string; var ReleaseJSON: string; var AssetsJSON: string): Boolean;
 var
   i: Integer;
-  CachedData: string;
+  CachedData, Key: string;
   DelimPos: Integer;
 begin
   Result := False;
+  Key := Repo + ':' + Resolution;
   for i := 0 to CachedReleaseInfo.Count - 1 do
   begin
     CachedData := CachedReleaseInfo[i];
     DelimPos := Pos('=', CachedData);
     if DelimPos > 0 then
     begin
-      if SameText(Trim(Copy(CachedData, 1, DelimPos - 1)), Trim(Repo)) then
+      if SameText(Trim(Copy(CachedData, 1, DelimPos - 1)), Trim(Key)) then
       begin
         CachedData := Copy(CachedData, DelimPos + 1, Length(CachedData) - DelimPos);
         DelimPos := Pos('|', CachedData);
@@ -608,7 +580,7 @@ begin
           ReleaseJSON := Copy(CachedData, 1, DelimPos - 1);
           AssetsJSON := Copy(CachedData, DelimPos + 1, Length(CachedData) - DelimPos);
           Result := True;
-          Log('Cached data found for repo: ' + Repo);
+          Log('Cached data found for repo: ' + Repo + ' with resolution: ' + Resolution);
           Exit;
         end
         else
@@ -619,7 +591,7 @@ begin
       end;
     end;
   end;
-  Log('No cached data found for repo: ' + Repo);
+  Log('No cached data found for repo: ' + Repo + ' with resolution: ' + Resolution);
 end;
 
 function GetFileSizeForLatestReleaseFromAssets(AssetsJSON: string): string;
@@ -841,7 +813,7 @@ begin
   Log('Checking if latest release has files for repository: ' + Repo);
   Result := False;
   
-  if GetCachedJSONForRepo(Repo, ReleaseJSON, AssetsJSON) then
+  if GetCachedJSONForRepo(Repo, '', ReleaseJSON, AssetsJSON) then
   begin
     LatestReleaseAssetsJSON := AssetsJSON;
     Log('Using cached release info for ' + Repo);
@@ -911,11 +883,11 @@ begin
       Break;
     end;
   end;
-  
+
   if not ContainsDigit and (Pos('NoModels', Resolution) = 0) then
     Resolution := '';
 
-  // Append "k" to numeric resolutions if not present
+  // Append "k" to numeric resolutions if not present and not containing "NoModels"
   if (Resolution <> '') and (Resolution[Length(Resolution)] <> 'k') and ContainsDigit then
     Resolution := Resolution + 'k';
 
@@ -932,7 +904,7 @@ begin
   Log('Getting latest release version for repository: ' + Repo);
   Result := '';
   
-  if GetCachedJSONForRepo(Repo, ReleaseJSON, AssetsJSON) then
+  if GetCachedJSONForRepo(BodyRepos[I], '', ReleaseJSON, AssetsJSON) then
   begin
     LatestReleaseJSON := ReleaseJSON;
     Log('Using cached release info for ' + Repo);
@@ -996,7 +968,7 @@ begin
       Exit;
     end;
 
-    if GetCachedJSONForRepo(BodyRepos[I], ReleaseJSON, AssetsJSON) then
+    if GetCachedJSONForRepo(BodyRepos[I], '', ReleaseJSON, AssetsJSON) then
     begin
       LatestReleaseJSON := ReleaseJSON;
       LatestReleaseAssetsJSON := AssetsJSON;
@@ -1038,11 +1010,12 @@ end;
 procedure PopulateResolutions(ComboBox: TComboBox; RepoIndex: Integer; var Sizes: TStringList);
 var
   I, J, StartPos: Integer;
-  AssetName, Resolution: string;
+  AssetName, ReleaseJSON, AssetsJSON, Resolution: string;
   Size, TotalSize: Int64;
   AddedResolutions: TStringList;
   ResolutionIndex: Integer;
 begin
+  NoAssetsFound := False;
   AddedResolutions := TStringList.Create;
   try
     Log('========================================================');
@@ -1101,6 +1074,16 @@ begin
                 AddedResolutions.Add(Resolution);
                 Sizes.Add(IntToStr(Size));
                 Log('Added resolution: ' + Resolution + ' with size: ' + IntToStr(Size));
+								
+								// Cache the resolution-specific data
+								if (BodyRepos[RepoIndex] <> '') and (Resolution <> '') then
+								begin
+									ReleaseJSON := LatestReleaseJSON;
+									AssetsJSON := LatestReleaseAssetsJSON;
+									CachedReleaseInfo.Add(BodyRepos[RepoIndex] + ':' + Resolution + '=' + ReleaseJSON + '|' + AssetsJSON);
+									Log('Cached resolution-specific data for repo: ' + BodyRepos[RepoIndex] + ' with resolution: ' + Resolution);
+								end;
+								
               end
               else
               begin
@@ -1116,8 +1099,20 @@ begin
       else
         Break;
     end;
+		
+		// Add "None" option to the ComboBox
+    ComboBox.Items.Add('None');
+    Sizes.Add('0');
 
-    if ComboBox.Items.Count > 0 then
+    // Check if the ComboBox is empty except for "None"
+    if ComboBox.Items.Count = 1 then
+    begin
+      ComboBox.ItemIndex := 0;
+      Log('No assets found for ' + BodyRepos[RepoIndex] + '. Added "None" option.');
+      NoAssetsFound := True;
+			BodiesWithNoAssets.Add(ExtractBodyName(BodyRepos[RepoIndex]));
+    end
+    else
     begin
       ComboBox.ItemIndex := 0;
       UpdateSizeLabel(ComboBox.Tag);
@@ -1213,7 +1208,6 @@ begin
   InitializeBodyRepos;
   InitializeVariables;
 	InitializeArrayLengths;
-	InitializeCache;
   
   // Read GitHub access token from the registry if it exists
   MyAccessToken := ReadGitHubAccessToken;
@@ -1270,6 +1264,15 @@ begin
   CurrentFileLabelE.Top := ScaleY(70);
   CurrentFileLabelE.Width := ExtractPage.SurfaceWidth - ScaleX(16);
   CurrentFileLabelE.Caption := 'Initializing Extraction...';
+	
+	// Merge Progress Bar Page 
+	MergePage := CreateOutputProgressPage('Merging Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
+  CurrentFileLabelE := TNewStaticText.Create(MergePage);
+  CurrentFileLabelE.Parent := MergePage.Surface;
+  CurrentFileLabelE.Left := ScaleX(8);
+  CurrentFileLabelE.Top := ScaleY(70);
+  CurrentFileLabelE.Width := MergePage.SurfaceWidth - ScaleX(16);
+  CurrentFileLabelE.Caption := 'Initializing Merging...';
 	
   WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(0);
   WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(0);
@@ -1345,21 +1348,23 @@ var
   ReleaseJSON, AssetsJSON: string;
 begin
   Result := TStringList.Create;
-  Log('Attempting to retrieve cached data for repository: ' + Repo);
+  Log('Attempting to retrieve cached data for repository: ' + Repo + ' with resolution: ' + Resolution);
 
-  if GetCachedJSONForRepo(Repo, ReleaseJSON, AssetsJSON) then
+  if GetCachedJSONForRepo(Repo, Resolution, ReleaseJSON, AssetsJSON) then
   begin
     LatestReleaseAssetsJSON := AssetsJSON;
     LatestReleaseJSON := ReleaseJSON;
-    Log('Using cached release info for ' + Repo);
+    Log('Using cached release info for ' + Repo + ' with resolution: ' + Resolution);
   end
   else
   begin
-    Log('No cached data found for ' + Repo + '. Fetching latest release info.');
+    Log('No cached data found for ' + Repo + ' with resolution: ' + Resolution + '. Fetching latest release info.');
     GetLatestReleaseHTTPInfo(Repo);
     LatestReleaseAssetsJSON := LatestReleaseAssetsJSON;
     LatestReleaseJSON := LatestReleaseJSON;
-    Log('Fetched latest release info for ' + Repo);
+    // Cache the resolution-specific data
+    CachedReleaseInfo.Add(Repo + ':' + Resolution + '=' + LatestReleaseJSON + '|' + LatestReleaseAssetsJSON);
+    Log('Fetched latest release info for ' + Repo + ' with resolution: ' + Resolution);
   end;
 
   StartPos := 1;
@@ -1373,7 +1378,14 @@ begin
       if J > 0 then
       begin
         AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
-        Log('Found asset: ' + AssetName);
+        Log('Found asset in GetRepoDownloadURLs: ' + AssetName);
+        // Skip "NoModels" assets unless explicitly selected
+        if (Pos('NoModels', AssetName) > 0) and (Resolution <> 'NoModels') then
+        begin
+          Log('Skipping NoModels asset: ' + AssetName);
+          StartPos := J + 1;
+          Continue;
+        end;
         if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
         begin
           I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
@@ -1384,8 +1396,15 @@ begin
             if J > 0 then
             begin
               BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
-              Result.Add(BrowserDownloadURL);
-              Log('Added download URL: ' + BrowserDownloadURL);
+              if Result.IndexOf(BrowserDownloadURL) = -1 then
+              begin
+                Result.Add(BrowserDownloadURL);
+                Log('Added download URL in GetRepoDownloadURLs: ' + BrowserDownloadURL);
+              end
+              else
+              begin
+                Log('Skipped duplicate URL in GetRepoDownloadURLs: ' + BrowserDownloadURL);
+              end;
             end;
           end;
         end;
@@ -1396,7 +1415,7 @@ begin
       Break;
   end;
 
-  Log('Completed retrieving download URLs for repository: ' + Repo);
+  Log('Completed retrieving download URLs for repository: ' + Repo + ' with resolution: ' + Resolution);
 end;
 
 procedure AddToDownloadList(RepoName, Resolution, DestFilePath: string);
@@ -1407,11 +1426,22 @@ var
   URLExists: Boolean;
   ReleaseJSON, AssetsJSON: string;
 begin
-  if not GetCachedJSONForRepo(RepoName, ReleaseJSON, AssetsJSON) then
+  Log('========================================================');
+  Log('AddToDownloadList called for Repo: ' + RepoName + ' with Resolution: ' + Resolution);
+
+  if Resolution = 'None' then
+  begin
+    Log('Skipping download for ' + RepoName + ' as "None" is selected.');
+    Exit;
+  end;
+
+  if not GetCachedJSONForRepo(RepoName, Resolution, ReleaseJSON, AssetsJSON) then
   begin
     GetLatestReleaseHTTPInfo(RepoName);
     ReleaseJSON := LatestReleaseJSON;
     AssetsJSON := LatestReleaseAssetsJSON;
+    // Cache the resolution-specific data
+    CachedReleaseInfo.Add(RepoName + ':' + Resolution + '=' + ReleaseJSON + '|' + AssetsJSON);
   end;
 
   // Get the download URLs for the specified resolution
@@ -1420,7 +1450,14 @@ begin
   for I := 0 to DownloadURLs.Count - 1 do
   begin
     BrowserDownloadURL := DownloadURLs[I];
-    
+
+    // Exclude the specific URL
+    if Pos('Parallax_StockTextures', BrowserDownloadURL) > 0 then
+    begin
+      Log('Excluded URL: ' + BrowserDownloadURL);
+      Continue;
+    end;
+
     // Check if the file is already in the download list
     URLExists := False;
     for J := 0 to DownloadList.Count - 1 do
@@ -1428,18 +1465,19 @@ begin
       if Pos(BrowserDownloadURL, DownloadList[J]) > 0 then
       begin
         URLExists := True;
+        Log('Duplicate URL found in AddToDownloadList: ' + BrowserDownloadURL);
         Break;
       end;
     end;
 
     if not URLExists then
     begin
-      Log('Add to downloads: ' + BrowserDownloadURL + ' as ' + DestFilePath);
+      Log('Add to downloads in AddToDownloadList: ' + BrowserDownloadURL + ' as ' + DestFilePath);
       DownloadList.Add(BrowserDownloadURL + '=' + DestFilePath);
     end
     else
     begin
-      Log('Skip duplicate URL: ' + BrowserDownloadURL);
+      Log('Skip duplicate URL in AddToDownloadList: ' + BrowserDownloadURL);
     end;
   end;
 
@@ -1452,7 +1490,7 @@ var
   Resolution, ParallaxURL: string;
   I: Integer;
 begin
-  DownloadList := TStringList.Create;
+  Log('InitializeDownloadList called');
 
   // RSS-Terrain
   AddToDownloadList('RSS-Reborn/RSS-Terrain', '', ExpandConstant('{tmp}\RSS_Terrain.7z'));
@@ -1464,6 +1502,8 @@ begin
   for I := 0 to High(BodyRepos) do
   begin
     Resolution := ResolutionCombos[I].Text;
+		Log('========================================================');
+		Log('Adding to download list: ' + BodyRepos[I] + ' with resolution: ' + Resolution);
     AddToDownloadList(BodyRepos[I], Resolution, ExpandConstant('{tmp}\') + ExtractBodyName(BodyRepos[I]) + '_' + Resolution + '.7z');
   end;
 
@@ -1483,177 +1523,133 @@ begin
   if not EVEDownloaded then
     AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', ExpandConstant('{tmp}\EVE.zip'));
 
-  // Download Parallax and Parallax_ScatterTextures
+  // Download Parallax
 		ParallaxVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
     ParallaxURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + ParallaxVersion + '/Parallax-' + ParallaxVersion + '.zip';
-    ParallaxScatterTexturesURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + ParallaxVersion + '/Parallax_ScatterTextures-' + ParallaxVersion + '.zip';
     AddToDownloadList('Gameslinx/Tessellation', '', ExpandConstant('{tmp}\Parallax-' + ParallaxVersion + '.zip'));
 end;
 
-function MoveFolder(const SourcePath, DestPath: String): Boolean;
+procedure MoveFile(const SourceFile, DestFile: string);
+begin
+  Log('Moving file: ' + SourceFile + ' to ' + DestFile);
+  if not RenameFile(SourceFile, DestFile) then
+  begin
+    Log('Failed to move file: ' + SourceFile + ' to ' + DestFile);
+    RaiseException('Failed to move file: ' + SourceFile);
+  end
+end;
+
+procedure MoveDirectory(const SourceDir, DestDir: string);
 var
   FindRec: TFindRec;
-  SourceFile, DestFile: String;
+  SourceFile, DestFile: string;
 begin
-  Result := True;
-  if FindFirst(AddBackslash(SourcePath) + '*', FindRec) then
+  Log('Moving directory: ' + SourceDir + ' to ' + DestDir);
+
+  // Ensure the destination directory exists
+  if not DirExists(DestDir) then
+  begin
+    Log('Destination directory does not exist. Creating: ' + DestDir);
+    if not CreateDir(DestDir) then
+    begin
+      Log('Failed to create directory: ' + DestDir);
+      RaiseException('Failed to create directory: ' + DestDir);
+    end
+    else
+    begin
+      Log('Successfully created directory: ' + DestDir);
+    end;
+  end;
+
+  if FindFirst(SourceDir + '\*', FindRec) then
   begin
     try
       repeat
-        SourceFile := AddBackslash(SourcePath) + FindRec.Name;
-        DestFile := AddBackslash(DestPath) + FindRec.Name;
+        SourceFile := SourceDir + '\' + FindRec.Name;
+        DestFile := DestDir + '\' + FindRec.Name;
 
-        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) = FILE_ATTRIBUTE_DIRECTORY then
+        if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0 then
         begin
+          // Recursively move subdirectory
           if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
           begin
-            if not DirExists(DestFile) then
-            begin
-              if not CreateDir(DestFile) then
-              begin
-                Log('Failed to create destination: ' + DestFile);
-                MsgBox('Failed to create destination: ' + DestFile, mbError, MB_OK);
-                Result := False;
-                Exit;
-              end;
-            end;
-            if not MoveFolder(SourceFile, DestFile) then
-            begin
-              Result := False;
-              Exit;
-            end;
+            MoveDirectory(SourceFile, DestFile);
           end;
         end
         else
         begin
-          if not RenameFile(SourceFile, DestFile) then
-          begin
-            Log('Failed to move file: ' + SourceFile + ' to ' + DestFile);
-            MsgBox('Failed to move file: ' + SourceFile + ' to ' + DestFile, mbError, MB_OK);
-            Result := False;
-            Exit;
-          end;
+          // Move file
+          MoveFile(SourceFile, DestFile);
         end;
       until not FindNext(FindRec);
     finally
       FindClose(FindRec);
     end;
-  end
-  else
-  begin
-    Log('Source does not exist: ' + SourcePath);
-    MsgBox('Source does not exist: ' + SourcePath, mbError, MB_OK);
-    Result := False;
   end;
-end;
-
-procedure MoveDirectoryContents(SourcePath, DestPath: string);
-var
-	FindRec: TFindRec;
-	SourceFile, DestFile: string;
-begin
-	if FindFirst(AddBackslash(SourcePath) + '*', FindRec) then
-	begin
-		try
-			repeat
-				SourceFile := AddBackslash(SourcePath) + FindRec.Name;
-				DestFile := AddBackslash(DestPath) + FindRec.Name;
-
-				if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) = FILE_ATTRIBUTE_DIRECTORY then
-				begin
-					if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
-					begin
-						if not DirExists(DestFile) then
-							CreateDir(DestFile);
-						MoveDirectoryContents(SourceFile, DestFile);
-					end;
-				end
-				else
-				begin
-					if not RenameFile(SourceFile, DestFile) then
-						Log('Failed to move file: ' + SourceFile + ' to ' + DestFile)
-					else
-						//Log('Moved file: ' + SourceFile + ' to ' + DestFile);
-				end;
-			until not FindNext(FindRec);
-		finally
-			FindClose(FindRec);
-		end;
-	end;
-end;
-
-procedure MergeFolders(SourceDir, DestDir: string);
-var
-  FindRec: TFindRec;
-  SourcePath: string;
-begin
-  Log('Starting MergeFolders');
-  if FindFirst(AddBackslash(SourceDir) + '*', FindRec) then
-  begin
-    try
-      repeat
-        SourcePath := AddBackslash(SourceDir) + FindRec.Name;
-        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) = FILE_ATTRIBUTE_DIRECTORY then
-        begin
-          if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
-          begin
-            if not MoveFolder(SourcePath, DestDir) then
-            begin
-              Log('Failed to move contents of: ' + SourcePath);
-              Exit;
-            end;
-          end;
-        end
-        else
-        begin
-          if not RenameFile(SourcePath, AddBackslash(DestDir) + FindRec.Name) then
-          begin
-            Log('Failed to move file: ' + SourcePath + ' to ' + AddBackslash(DestDir) + FindRec.Name);
-            MsgBox('Failed to move file: ' + SourcePath + ' to ' + AddBackslash(DestDir) + FindRec.Name, mbError, MB_OK);
-            Exit;
-          end;
-        end;
-      until not FindNext(FindRec);
-    finally
-      FindClose(FindRec);
-    end;
-  end
-  else
-  begin
-    Log('No directories found in ' + SourceDir);
-  end;
-  Log('Completed MergeFolders');
 end;
 
 procedure MergeGameDataFolders;
 var
-  SourceDir, DestDir: string;
+  DownloadsDir, GameDataMerged: string;
+  FindRec: TFindRec;
+  SourceDir: string;
+  ProgressCounter: Integer;
 begin
-  Log('Starting MergeGameDataFolders');
-  SourceDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
-  DestDir := DownloadsDir;
+  // Define the source and destination directories
+  DownloadsDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
+  GameDataMerged := DownloadsDir + '\GameDataMerged';
 
-  // Ensure GameData directory exists
-  if not DirExists(DestDir) then
-    if CreateDir(DestDir) then
-      Log('Created GameData directory: ' + DestDir)
+  Log('DownloadsDir: ' + DownloadsDir);
+  Log('GameDataMerged: ' + GameDataMerged);
+
+  // Ensure the GameDataMerged directory exists
+  if not DirExists(GameDataMerged) then
+  begin
+    Log('GameDataMerged directory does not exist. Creating: ' + GameDataMerged);
+    if not CreateDir(GameDataMerged) then
+    begin
+      Log('Failed to create GameDataMerged directory: ' + GameDataMerged);
+      MsgBox('Failed to create GameDataMerged directory: ' + GameDataMerged, mbError, MB_OK);
+      RaiseException('Failed to create GameDataMerged directory: ' + GameDataMerged);
+      Exit; // Exit if directory creation fails
+    end
     else
     begin
-      Log('Failed to create GameData directory: ' + DestDir);
-      Exit;
+      Log('Successfully created GameDataMerged directory: ' + GameDataMerged);
     end;
+  end;
 
-  // Move contents from extracted directories to GameData
-  MoveDirectoryContents(AddBackslash(SourceDir) + 'RSS_Terrain', DestDir);
-  MoveDirectoryContents(AddBackslash(SourceDir) + 'RSS_Configs', DestDir);
-  MoveDirectoryContents(AddBackslash(SourceDir) + 'RSSVE_Configs', DestDir);
-  MoveDirectoryContents(AddBackslash(SourceDir) + 'RSSVE_Textures', DestDir);
-  MoveDirectoryContents(AddBackslash(SourceDir) + 'Scatterer', DestDir);
-  MoveDirectoryContents(AddBackslash(SourceDir) + 'EnvironmentalVisualEnhancements', DestDir);
-  MoveDirectoryContents(AddBackslash(SourceDir) + 'Parallax-' + ParallaxVersion, DestDir);
-  MoveDirectoryContents(AddBackslash(SourceDir) + 'Parallax_ScatterTextures-' + ParallaxVersion, DestDir);
+  ProgressCounter := 0;
 
-  Log('Completed MergeGameDataFolders');
+  if FindFirst(DownloadsDir + '\*', FindRec) then
+  begin
+    try
+      repeat
+        SourceDir := DownloadsDir + '\' + FindRec.Name;
+
+        // Skip if it's not a directory or if it's a zip file
+        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0) and
+           (FindRec.Name <> '.') and (FindRec.Name <> '..') and
+           (ExtractFileExt(FindRec.Name) <> '.zip') then
+        begin
+          Log('Moving directory: ' + SourceDir + ' to ' + GameDataMerged);
+          MoveDirectory(SourceDir, GameDataMerged);
+        end;
+                
+        // Update progress
+        Inc(ProgressCounter);
+        MergePage.SetProgress(ProgressCounter, 50);
+        WizardForm.Update;
+                
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+  MergePage.SetProgress(50, 50);
+  WizardForm.Update;
+  MergePage.SetProgress(DownloadList.Count, DownloadList.Count);
+  Log('Completed merging GameData folders');
 end;
 
 procedure RemoveObsoleteFolders;
@@ -1858,6 +1854,7 @@ begin
   else
   begin
     Log('All files extracted successfully.');
+		Log('========================================================');
   end;
 end;
 
@@ -1894,6 +1891,8 @@ end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 // When user changes the UI page, checks are made
+var
+I: Integer;
 begin
   Log('Next button clicked, CurPageID: ' + IntToStr(CurPageID));
   Result := True; // Allow navigation by default
@@ -1917,9 +1916,13 @@ begin
       Exit;
     end;
     Log('KSP directory set to: ' + KSP_DIR);
-  end
+  
+    if NoAssetsFound then
+    begin
+      MsgBox('No assets found for the latest release of one or more bodies. They will not be downloaded.', mbInformation, MB_OK);
+    end;
+  end;
 end;
-
 function URLDownloadToFile(Caller: Integer; URL: PAnsiChar; FileName: PAnsiChar; Reserved: Integer; StatusCB: Integer): Integer;
   external 'URLDownloadToFileA@urlmon.dll stdcall';
 
@@ -1980,7 +1983,6 @@ begin
   try
     ExtractProc;
     Log('Download and extraction process completed');
-		Log('========================================================');
   except
     Log('ExtractFiles failed: ' + GetExceptionMessage);
 		Log('========================================================');
@@ -2021,12 +2023,18 @@ begin
     DownloadPage.Show;
     try
       // Call modular functions to perform tasks
-      if not InitializeDownloads then
-      begin
-        Log('Failed to initialize downloads.');
-        MsgBox('Failed to initialize downloads. Please check the logs for details.', mbError, MB_OK);
-        Exit;
-      end;
+			begin
+				if not InitializeDownloads then
+				begin
+					Log('Failed to initialize downloads.');
+					MsgBox('Failed to initialize downloads. Please check the logs for details.', mbError, MB_OK);
+					Exit;
+				end
+				else
+				begin
+					Log('CurStepChanged');
+				end;
+			end;
 			DownloadAllFiles;
 		finally
 			OnDownloadComplete;
@@ -2044,14 +2052,19 @@ begin
 		finally
 		  VerifyExtraction;
 		  ExtractPage.Hide;
+			MergePage.Show;
 		end;
 
+		try
       if not MergeGameData then
       begin
         Log('Merge game data step failed.');
         MsgBox('Merge game data step failed. Please check the logs for details.', mbError, MB_OK);
         Exit;
       end;
+		finally;
+			MergePage.hide;
+		end;
 
       Log('Installation process completed successfully, cleaning up files now');
 			DeinitializeSetup;
