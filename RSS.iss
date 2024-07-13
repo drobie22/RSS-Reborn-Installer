@@ -67,6 +67,7 @@ var
 	CachedReleaseInfo: TStringList;
 	CurrentFileLabel: TNewStaticText;
 	CurrentFileLabelE: TNewStaticText;
+	CurrentFileLabelM: TNewStaticText;
   DownloadList: TStringList;
   DownloadsDir: string;
 	DownloadLogs: TStringList;
@@ -476,6 +477,36 @@ begin
   Result := Format('%d days, %d hours, %d minutes', [Days, Hours, Minutes]);
 end;
 
+function ExtractJSONField(const JSON, FieldName: string): string;
+var
+  StartPos, EndPos: Integer;
+begin
+  Result := '';
+  StartPos := Pos(FieldName, JSON);
+  if StartPos > 0 then
+  begin
+    StartPos := StartPos + Length(FieldName);
+    EndPos := PosEx('"', JSON, StartPos + 1);
+    if EndPos > 0 then
+      Result := Copy(JSON, StartPos + 1, EndPos - StartPos - 1);
+  end;
+end;
+
+function ExtractJSONArray(const JSON, ArrayName: string): string;
+var
+  StartPos, EndPos: Integer;
+begin
+  Result := '';
+  StartPos := Pos(ArrayName, JSON);
+  if StartPos > 0 then
+  begin
+    StartPos := StartPos + Length(ArrayName);
+    EndPos := PosEx(']', JSON, StartPos);
+    if EndPos > 0 then
+      Result := Copy(JSON, StartPos, EndPos - StartPos + 1);
+  end;
+end;
+
 procedure InitializeBodyRepos;
 // Initializes the array with GitHub repositories for planetary bodies.
 // Provides the list of repositories to fetch assets from.
@@ -497,7 +528,6 @@ begin
 end;
 
 function Extract7Zip(ArchivePath, DestDir: string): Boolean;
-// Use user's 7zip to unzip files, including multi-volume archives
 var
   ZipPath: string;
   ResultCode: Integer;
@@ -505,6 +535,7 @@ var
   IsMultiVolume: Boolean;
   FirstPartArchivePath: string;
 begin
+  // Determine the 7-Zip executable path
   if FileExists('C:\Program Files\7-Zip\7z.exe') then
     ZipPath := 'C:\Program Files\7-Zip\7z.exe'
   else if FileExists('C:\Program Files (x86)\7-Zip\7z.exe') then
@@ -517,6 +548,7 @@ begin
     Exit;
   end;
 
+  // Verify the archive file exists
   if not FileExists(ArchivePath) then
   begin
     Log('Archive file not found: ' + ArchivePath);
@@ -528,13 +560,19 @@ begin
   IsMultiVolume := ExtractFileExt(ArchivePath) = '.001';
   if IsMultiVolume then
   begin
-    Log('Multi-volume archive detected');
     FirstPartArchivePath := ArchivePath;
-    Log('Using first part of multi-volume archive: ' + FirstPartArchivePath);
+    Log('Multi-volume archive detected, using first part: ' + FirstPartArchivePath);
     CommandLine := Format('"%s" x "%s" -o"%s" -y', [ZipPath, FirstPartArchivePath, DestDir]);
   end
   else
   begin
+    // Skip if it's a part of a multi-volume archive but not the first part
+    if (Pos('.7z.', ArchivePath) > 0) and not IsMultiVolume then
+    begin
+      Log('Skipping part of multi-volume archive: ' + ArchivePath);
+      Result := True;
+      Exit;
+    end;
     CommandLine := Format('"%s" x "%s" -o"%s" -y', [ZipPath, ArchivePath, DestDir]);
   end;
 
@@ -554,44 +592,64 @@ begin
     Exit;
   end;
 
+  Log('Extraction successful for ' + ArchivePath);
   Result := True;
+end;
+
+procedure CacheReleaseInfo(Repo, Resolution, ReleaseJSON, AssetsJSON: string);
+var
+  CacheKey: string;
+  CachedData: string;
+  I: Integer;
+begin
+  CacheKey := Repo + ':' + Resolution;
+  CachedData := ReleaseJSON + '|' + AssetsJSON;
+
+  // Check if the key already exists
+  for I := 0 to CachedReleaseInfo.Count - 1 do
+  begin
+    if Pos(CacheKey + '=', CachedReleaseInfo[I]) = 1 then
+    begin
+      // Update existing entry
+      CachedReleaseInfo[I] := CacheKey + '=' + CachedData;
+      Log('Updated cached data for ' + CacheKey);
+      Exit;
+    end;
+  end;
+
+  // Add new entry if not found
+  CachedReleaseInfo.Add(CacheKey + '=' + CachedData);
+  Log('Cached new data for ' + CacheKey);
 end;
 
 function GetCachedJSONForRepo(Repo, Resolution: string; var ReleaseJSON: string; var AssetsJSON: string): Boolean;
 var
-  i: Integer;
-  CachedData, Key: string;
-  DelimPos: Integer;
+  CacheKey, CachedData: string;
+  I, DelimPos: Integer;
 begin
   Result := False;
-  Key := Repo + ':' + Resolution;
-  for i := 0 to CachedReleaseInfo.Count - 1 do
+  CacheKey := Repo + ':' + Resolution;
+
+  for I := 0 to CachedReleaseInfo.Count - 1 do
   begin
-    CachedData := CachedReleaseInfo[i];
-    DelimPos := Pos('=', CachedData);
-    if DelimPos > 0 then
+    if Pos(CacheKey + '=', CachedReleaseInfo[I]) = 1 then
     begin
-      if SameText(Trim(Copy(CachedData, 1, DelimPos - 1)), Trim(Key)) then
+      CachedData := Copy(CachedReleaseInfo[I], Length(CacheKey) + 2, MaxInt); // +2 to skip '='
+      DelimPos := Pos('|', CachedData);
+      if DelimPos > 0 then
       begin
-        CachedData := Copy(CachedData, DelimPos + 1, Length(CachedData) - DelimPos);
-        DelimPos := Pos('|', CachedData);
-        if DelimPos > 0 then
-        begin
-          ReleaseJSON := Copy(CachedData, 1, DelimPos - 1);
-          AssetsJSON := Copy(CachedData, DelimPos + 1, Length(CachedData) - DelimPos);
-          Result := True;
-          Log('Cached data found for repo: ' + Repo + ' with resolution: ' + Resolution);
-          Exit;
-        end
-        else
-        begin
-          Log('Invalid cached data format for repo: ' + Repo);
-          Exit;
-        end;
-      end;
+        ReleaseJSON := Copy(CachedData, 1, DelimPos - 1);
+        AssetsJSON := Copy(CachedData, DelimPos + 1, Length(CachedData) - DelimPos);
+        Result := True;
+        Log('Cached data found for ' + CacheKey);
+        Exit;
+      end
+      else
+        Log('Invalid cached data format for ' + CacheKey);
     end;
   end;
-  Log('No cached data found for repo: ' + Repo + ' with resolution: ' + Resolution);
+
+  Log('No cached data found for ' + CacheKey);
 end;
 
 function GetFileSizeForLatestReleaseFromAssets(AssetsJSON: string): string;
@@ -672,9 +730,15 @@ end;
 procedure GetLatestReleaseHTTPInfo(Repo: string);
 var
   HttpCli: Variant;
-  I, J: Integer;
-  CombinedResponse, CachedData: string;
+  CombinedResponse: string;
 begin
+  if GetCachedJSONForRepo(Repo, '', LatestReleaseJSON, LatestReleaseAssetsJSON) then
+  begin
+    Log('Using cached release info for ' + Repo);
+    LatestReleaseVersion := ExtractJSONField(LatestReleaseJSON, '"tag_name":"');
+    Exit;
+  end;
+
   Log('Fetching latest release info for ' + Repo);
   LatestReleaseJSON := '';
   LatestReleaseAssetsJSON := '';
@@ -703,26 +767,11 @@ begin
       LatestReleaseJSON := CombinedResponse;
 
       // Parse the JSON response to extract necessary fields and assets
-      I := Pos('"tag_name":"', CombinedResponse);
-      if I > 0 then
-      begin
-        I := I + Length('"tag_name":"');
-        J := FindNextQuote(CombinedResponse, I);
-        if J > 0 then
-          LatestReleaseVersion := Copy(CombinedResponse, I, J - I);
-      end;
-
-      I := Pos('"assets":[', CombinedResponse);
-      if I > 0 then
-      begin
-        J := PosEx(']', CombinedResponse, I) + 1;
-        LatestReleaseAssetsJSON := Copy(CombinedResponse, I, J - I);
-      end;
+      LatestReleaseVersion := ExtractJSONField(CombinedResponse, '"tag_name":"');
+      LatestReleaseAssetsJSON := ExtractJSONArray(CombinedResponse, '"assets":[');
 
       // Cache the combined JSON responses
-      CachedData := Repo + '=' + LatestReleaseJSON + '|' + LatestReleaseAssetsJSON;
-      CachedReleaseInfo.Add(CachedData);
-      Log('Cached release info for ' + Repo);
+      CacheReleaseInfo(Repo, '', LatestReleaseJSON, LatestReleaseAssetsJSON);
     end
     else
     begin
@@ -1267,12 +1316,12 @@ begin
 	
 	// Merge Progress Bar Page 
 	MergePage := CreateOutputProgressPage('Merging Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
-  CurrentFileLabelE := TNewStaticText.Create(MergePage);
-  CurrentFileLabelE.Parent := MergePage.Surface;
-  CurrentFileLabelE.Left := ScaleX(8);
-  CurrentFileLabelE.Top := ScaleY(70);
-  CurrentFileLabelE.Width := MergePage.SurfaceWidth - ScaleX(16);
-  CurrentFileLabelE.Caption := 'Initializing Merging...';
+  CurrentFileLabelM := TNewStaticText.Create(MergePage);
+  CurrentFileLabelM.Parent := MergePage.Surface;
+  CurrentFileLabelM.Left := ScaleX(8);
+  CurrentFileLabelM.Top := ScaleY(70);
+  CurrentFileLabelM.Width := MergePage.SurfaceWidth - ScaleX(16);
+  CurrentFileLabelM.Caption := 'Initializing Merging...';
 	
   WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(0);
   WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(0);
@@ -1529,35 +1578,108 @@ begin
     AddToDownloadList('Gameslinx/Tessellation', '', ExpandConstant('{tmp}\Parallax-' + ParallaxVersion + '.zip'));
 end;
 
-procedure MoveFile(const SourceFile, DestFile: string);
+procedure CopyFileAndDelete(const SourceFile, DestFile: string);
 begin
-  Log('Moving file: ' + SourceFile + ' to ' + DestFile);
-  if not RenameFile(SourceFile, DestFile) then
+  //Log('Copying file: ' + SourceFile + ' to ' + DestFile);
+  if not FileCopy(SourceFile, DestFile, True) then
   begin
-    Log('Failed to move file: ' + SourceFile + ' to ' + DestFile);
-    RaiseException('Failed to move file: ' + SourceFile);
+    Log('Failed to copy file: ' + SourceFile + ' to ' + DestFile);
+    RaiseException('Failed to copy file: ' + SourceFile);
   end
+  else
+  begin
+    //Log('Copy successful: ' + SourceFile);
+    // Delete the original file after copying
+    if not DeleteFile(SourceFile) then
+    begin
+      Log('Failed to delete original file: ' + SourceFile);
+      RaiseException('Failed to delete original file: ' + SourceFile);
+    end
+    else
+    begin
+      //Log('Successfully deleted original file: ' + SourceFile);
+    end;
+  end;
 end;
 
-procedure MoveDirectory(const SourceDir, DestDir: string);
+function ForceRemoveDir(const DirPath: string): Boolean;
+var
+  Command: string;
+  ResultCode: Integer;
+begin
+  Command := 'cmd.exe /C rd /S /Q "' + DirPath + '"';
+  Result := Exec(Command, '', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if ResultCode = 0 then
+    Result := True
+  else
+    Result := False;
+end;
+
+function TryRemoveDir(const DirPath: string): Boolean;
+var
+  RetryCount: Integer;
+begin
+  RetryCount := 0;
+  Result := False;
+  while (RetryCount < 5) and (not Result) do
+  begin
+    Result := RemoveDir(DirPath);
+    if not Result then
+    begin
+      Log('Failed to delete directory: ' + DirPath + ', retrying...');
+      Sleep(1000); // Wait for 1 second before retrying
+    end;
+    Inc(RetryCount);
+  end;
+  if not Result then
+  begin
+    Log('Standard delete failed, attempting forceful delete...');
+    Result := ForceRemoveDir(DirPath);
+  end;
+  if Result then
+    //Log('Successfully deleted directory: ' + DirPath)
+  else
+    Log('Failed to delete directory after retries: ' + DirPath);
+end;
+
+procedure CopyFileAndRenameIfNeeded(const SourceFile, DestFile: string);
+var
+  DestFileNew: string;
+  Count: Integer;
+begin
+  Count := 0;
+  DestFileNew := DestFile;
+  while FileExists(DestFileNew) do
+  begin
+    Inc(Count);
+    DestFileNew := ChangeFileExt(DestFile, '') + '_' + IntToStr(Count) + ExtractFileExt(DestFile);
+  end;
+
+  if not FileCopy(SourceFile, DestFileNew, True) then
+  begin
+    Log('Failed to copy file: ' + SourceFile + ' to ' + DestFileNew);
+    RaiseException('Failed to copy file: ' + SourceFile);
+  end
+  else
+  begin
+    if not DeleteFile(SourceFile) then
+    begin
+      Log('Failed to delete original file: ' + SourceFile);
+    end;
+  end;
+end;
+
+procedure CopyDirectory(const SourceDir, DestDir: string);
 var
   FindRec: TFindRec;
   SourceFile, DestFile: string;
 begin
-  Log('Moving directory: ' + SourceDir + ' to ' + DestDir);
-
-  // Ensure the destination directory exists
   if not DirExists(DestDir) then
   begin
-    Log('Destination directory does not exist. Creating: ' + DestDir);
     if not CreateDir(DestDir) then
     begin
       Log('Failed to create directory: ' + DestDir);
       RaiseException('Failed to create directory: ' + DestDir);
-    end
-    else
-    begin
-      Log('Successfully created directory: ' + DestDir);
     end;
   end;
 
@@ -1570,21 +1692,25 @@ begin
 
         if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0 then
         begin
-          // Recursively move subdirectory
           if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
           begin
-            MoveDirectory(SourceFile, DestFile);
+            CopyDirectory(SourceFile, DestDir + '\' + FindRec.Name);
           end;
         end
         else
         begin
-          // Move file
-          MoveFile(SourceFile, DestFile);
+          CopyFileAndRenameIfNeeded(SourceFile, DestFile);
         end;
       until not FindNext(FindRec);
     finally
       FindClose(FindRec);
     end;
+  end;
+
+  // Attempt to delete the source directory after copying
+  if not TryRemoveDir(SourceDir) then
+  begin
+    Log('Failed to delete original directory: ' + SourceDir);
   end;
 end;
 
@@ -1598,10 +1724,7 @@ begin
   // Define the source and destination directories
   DownloadsDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
   GameDataMerged := DownloadsDir + '\GameDataMerged';
-
-  Log('DownloadsDir: ' + DownloadsDir);
-  Log('GameDataMerged: ' + GameDataMerged);
-
+	
   // Ensure the GameDataMerged directory exists
   if not DirExists(GameDataMerged) then
   begin
@@ -1611,11 +1734,11 @@ begin
       Log('Failed to create GameDataMerged directory: ' + GameDataMerged);
       MsgBox('Failed to create GameDataMerged directory: ' + GameDataMerged, mbError, MB_OK);
       RaiseException('Failed to create GameDataMerged directory: ' + GameDataMerged);
-      Exit; // Exit if directory creation fails
+      Exit; 
     end
     else
     begin
-      Log('Successfully created GameDataMerged directory: ' + GameDataMerged);
+      //Log('Successfully created GameDataMerged directory: ' + GameDataMerged);
     end;
   end;
 
@@ -1627,17 +1750,19 @@ begin
       repeat
         SourceDir := DownloadsDir + '\' + FindRec.Name;
 
-        // Skip if it's not a directory or if it's a zip file
+        // Skip if it's not a directory or if it's the GameDataMerged directory itself or if it's a zip file
         if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0) and
            (FindRec.Name <> '.') and (FindRec.Name <> '..') and
+           (SourceDir <> GameDataMerged) and
            (ExtractFileExt(FindRec.Name) <> '.zip') then
         begin
           Log('Moving directory: ' + SourceDir + ' to ' + GameDataMerged);
-          MoveDirectory(SourceDir, GameDataMerged);
+          CopyDirectory(SourceDir, GameDataMerged);
         end;
-                
+        
         // Update progress
         Inc(ProgressCounter);
+        CurrentFileLabelM.Caption := 'Merging: ' + SourceDir;
         MergePage.SetProgress(ProgressCounter, 50);
         WizardForm.Update;
                 
@@ -1649,6 +1774,41 @@ begin
   MergePage.SetProgress(50, 50);
   WizardForm.Update;
   MergePage.SetProgress(DownloadList.Count, DownloadList.Count);
+end;
+
+procedure MoveParallaxDirectories;
+var
+  SourceDir, DestDir: string;
+begin
+  Log('Moving Parallax and Parallax_StockTextures to GameData directory.');
+  
+  // Define the source and destination directories
+  SourceDir := ExpandConstant('{userappdata}\RSSRebornDownloads\GameDataMerged');
+  DestDir := SourceDir + '\GameData';
+
+  // Move Parallax directory
+  if DirExists(SourceDir + '\Parallax') then
+  begin
+    Log('Moving directory: ' + SourceDir + '\Parallax to ' + DestDir);
+    CopyDirectory(SourceDir + '\Parallax', DestDir + '\Parallax');
+    if not TryRemoveDir(SourceDir + '\Parallax') then
+    begin
+      Log('Failed to delete original Parallax directory.');
+    end;
+  end;
+
+  // Move Parallax_StockTextures directory
+  if DirExists(SourceDir + '\Parallax_StockTextures') then
+  begin
+    Log('Moving directory: ' + SourceDir + '\Parallax_StockTextures to ' + DestDir);
+    CopyDirectory(SourceDir + '\Parallax_StockTextures', DestDir + '\Parallax_StockTextures');
+    if not TryRemoveDir(SourceDir + '\Parallax_StockTextures') then
+    begin
+      Log('Failed to delete original Parallax_StockTextures directory.');
+    end;
+  end;
+  
+  Log('Successfully moved Parallax and Parallax_StockTextures directories.');
   Log('Completed merging GameData folders');
 end;
 
@@ -1709,7 +1869,6 @@ begin
 end;
 
 procedure ExtractProc;
-// The proc that calls upon 7 zip
 var
   I, PartCount: Integer;
   FileName, CurrentLoc, URL, DownloadItem, Dest, EndDest: string;
@@ -1718,13 +1877,13 @@ begin
   ExtractPage.SetProgress(0, DownloadList.Count);
   for I := 0 to DownloadList.Count - 1 do
   begin
-	  WizardForm.Update;
+    WizardForm.Update;
     ExtractPage.SetProgress(I, DownloadList.Count);
     DownloadItem := DownloadList[I];
     URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
     FileName := CustomExtractFileName(URL);
     CurrentLoc := DownloadsDir + '\' + FileName;
-    
+
     // Determine destination directory name
     if Pos('.7z.001', FileName) > 0 then
       Dest := ReplaceSubstring(FileName, '.7z.001', '')
@@ -1732,20 +1891,21 @@ begin
       Dest := ReplaceSubstring(FileName, '.7z', '')
     else if Pos('.zip', FileName) > 0 then
       Dest := ReplaceSubstring(FileName, '.zip', '');
-      
+
     EndDest := DownloadsDir + '\' + Dest;
-    
+
     CurrentFileLabelE.Caption := 'Extracting: ' + FileName;
     WizardForm.Update;
 
     IsMultiPart := Pos('.7z.001', FileName) > 0;
     ExtractionSuccessful := False;
-    
+
     // Check if the file is a multi-volume archive part (only .001) or a single archive
     if IsMultiPart or (Pos('.7z', FileName) > 0) or (Pos('.zip', FileName) > 0) then
     begin
       if Extract7Zip(CurrentLoc, EndDest) then
       begin
+        Log('Extraction complete:' + CurrentLoc);
         ExtractionSuccessful := True;
         
         // If it's a multi-part archive, check that all parts were extracted
@@ -1773,13 +1933,17 @@ begin
             Inc(I);
         end;
       end
+      else
+      begin
+        Log('Failed to extract ' + CurrentLoc);
+      end;
     end;
     
     // Handle extraction failure
     if not ExtractionSuccessful then
     begin
-      ExtractionLogs.Add('Extraction process encountered issues for: ' + CurrentLoc);
-      MsgBox('Extraction process encountered issues for: ' + CurrentLoc, mbError, MB_OK);
+      Log('Extraction process encountered issues for ' + CurrentLoc);
+      MsgBox('Extraction process encountered issues for ' + CurrentLoc, mbError, MB_OK);
     end;
   end;
   ExtractPage.SetProgress(DownloadList.Count, DownloadList.Count);
@@ -1891,8 +2055,6 @@ end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 // When user changes the UI page, checks are made
-var
-I: Integer;
 begin
   Log('Next button clicked, CurPageID: ' + IntToStr(CurPageID));
   Result := True; // Allow navigation by default
@@ -1923,6 +2085,7 @@ begin
     end;
   end;
 end;
+
 function URLDownloadToFile(Caller: Integer; URL: PAnsiChar; FileName: PAnsiChar; Reserved: Integer; StatusCB: Integer): Integer;
   external 'URLDownloadToFileA@urlmon.dll stdcall';
 
@@ -1996,6 +2159,7 @@ begin
   Result := True;
   try
     MergeGameDataFolders;
+		MoveParallaxDirectories;
     Log('GameData folders merged successfully.');
 		Log('========================================================');
   except
