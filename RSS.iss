@@ -183,7 +183,7 @@ begin
 end;
 
 function DirectoryExists(Dir: string): Boolean;
-// Helper function
+// Checks to see if a requested folder path exists (yes or no) 
 var
   FindRec: TFindRec;
 begin
@@ -271,7 +271,6 @@ begin
 end;
 
 function SendMessage(hWnd: LongInt; Msg: LongInt; wParam: LongInt; lParam: LongInt): LongInt;
-// Helper function
   external 'SendMessageA@user32.dll stdcall';
 
 function FormatSize(SizeInBytes: Integer): string;
@@ -281,7 +280,7 @@ begin
 end;
 	
 function IsDirectoryEmpty(DirPath: string): Boolean;
-// Helper function
+// Checks to see if the given direcory contains files
 var
   FindRec: TFindRec;
 begin
@@ -299,7 +298,7 @@ begin
 end;
 
 function LastDelimiter(const Delimiters, S: string): Integer;
-// Helper function
+// String manipulation, gives position of last given character
 var
   I: Integer;
 begin
@@ -313,7 +312,7 @@ begin
 end;
 
 function ReplaceSubstring(const S, OldPattern, NewPattern: string): string;
-// Helper function
+// String manipulation to substitute text
 var
   PosStart: Integer;
 begin
@@ -328,7 +327,7 @@ begin
 end;
 
 function ExtractFileNameWithoutExt(const FileName: string): string;
-// Helper function
+// Specifically used to remove suffix from file name
 var
   I: Integer;
 begin
@@ -354,7 +353,7 @@ begin
 end;
 
 function CustomExtractFileName(DownloadURL: string): string;
-// Helper function
+// Specifically used to get file name from a URL string
 var
   FileNameStartPos: Integer;
 begin
@@ -366,7 +365,7 @@ begin
 end;
 
 function FindNextQuote(const JSON: string; StartIndex: Integer): Integer;
-// Helper function
+// String manipulation to get position of next "
 var
   I: Integer;
 begin
@@ -384,7 +383,7 @@ begin
 end;
 
 function LastCharPos(const Substr: string; const S: string): Integer;
-// Helper function
+// String manipulation to get length of string
 var
   i: Integer;
 begin
@@ -411,7 +410,7 @@ begin
 end;
 
 function ExtractBodyName(Repo: string): string;
-// Helper Function
+// String manipulation for body repos to get only the name for the UI
 var
   LastSlashPos: Integer;
   BodyName: string;
@@ -430,7 +429,7 @@ begin
 end;
 
 function DateToDays(Year, Month, Day: Integer): Int64;
-// Helper Function
+// Logic for GitHub limit time interpretation 
 var
   A, Y, M: Int64;
 begin
@@ -441,7 +440,7 @@ begin
 end;
 
 function GetCurrentUnixTime: Int64;
-// Helper Function
+// Logic for GitHub limit time interpretation 
 var
   DateTimeStr: string;
   Year, Month, Day, Hour, Minute, Second: Integer;
@@ -467,7 +466,7 @@ begin
 end;
 
 function SecondsToTimeStr(Seconds: Int64): string;
-// Helper Function 
+// Logic for GitHub limit time interpretation 
 var
   Days, Hours, Minutes: Int64;
 begin
@@ -478,6 +477,7 @@ begin
 end;
 
 function ExtractJSONField(const JSON, FieldName: string): string;
+// String manipulation
 var
   StartPos, EndPos: Integer;
 begin
@@ -493,6 +493,7 @@ begin
 end;
 
 function ExtractJSONArray(const JSON, ArrayName: string): string;
+// String manipulation
 var
   StartPos, EndPos: Integer;
 begin
@@ -528,6 +529,7 @@ begin
 end;
 
 function Extract7Zip(ArchivePath, DestDir: string): Boolean;
+// Main call to user's 7 zip exe
 var
   ZipPath: string;
   ResultCode: Integer;
@@ -597,6 +599,7 @@ begin
 end;
 
 procedure CacheReleaseInfo(Repo, Resolution, ReleaseJSON, AssetsJSON: string);
+// Caches information fetched by HTTP
 var
   CacheKey: string;
   CachedData: string;
@@ -623,6 +626,7 @@ begin
 end;
 
 function GetCachedJSONForRepo(Repo, Resolution: string; var ReleaseJSON: string; var AssetsJSON: string): Boolean;
+// Gets info from cache
 var
   CacheKey, CachedData: string;
   I, DelimPos: Integer;
@@ -676,6 +680,7 @@ begin
 end;
 
 procedure CheckRateLimit;
+// Checks GitHub's api rate limit
 var
   HttpCli: Variant;
   Response, CoreResource, ResetTimeStr: string;
@@ -728,6 +733,7 @@ begin
 end;
 
 procedure GetLatestReleaseHTTPInfo(Repo: string);
+// Main call to GitHub api
 var
   HttpCli: Variant;
   CombinedResponse: string;
@@ -856,6 +862,7 @@ begin
 end;
 
 function LatestReleaseHasFiles(Repo: string): Boolean;
+// Checks cache to see if release has assets
 var
   ReleaseJSON, AssetsJSON: string;
 begin
@@ -1000,6 +1007,7 @@ begin
 end;
 
 procedure RetrieveBodyInfo;
+// Gets all information from a body's repo
 var
   I: Integer;
   ReleaseJSON, AssetsJSON: string;
@@ -1057,6 +1065,7 @@ begin
 end;
 
 procedure PopulateResolutions(ComboBox: TComboBox; RepoIndex: Integer; var Sizes: TStringList);
+// Populates drop down elements in UI with all available resolution packs
 var
   I, J, StartPos: Integer;
   AssetName, ReleaseJSON, AssetsJSON, Resolution: string;
@@ -1391,6 +1400,7 @@ begin
 end;
 
 function GetRepoDownloadURLs(Repo, Resolution: string): TStringList;
+// Extracts unique direct download url for an asset
 var
   AssetName, BrowserDownloadURL: string;
   I, J, StartPos: Integer;
@@ -1468,6 +1478,7 @@ begin
 end;
 
 procedure AddToDownloadList(RepoName, Resolution, DestFilePath: string);
+// Adds a unique direct download link to a list to be executed
 var
   DownloadURLs: TStringList;
   BrowserDownloadURL: string;
@@ -1589,6 +1600,7 @@ begin
 end;
 
 procedure CopyFileAndDelete(const SourceFile, DestFile: string);
+// Simple proc to move files
 begin
   //Log('Copying file: ' + SourceFile + ' to ' + DestFile);
   if not FileCopy(SourceFile, DestFile, True) then
@@ -1612,129 +1624,68 @@ begin
   end;
 end;
 
-function ForceRemoveDir(const DirPath: string): Boolean;
+procedure DeleteDirectory(const DirPath: string);
+// Simple proc to delete a directory using command line
 var
   Command: string;
   ResultCode: Integer;
 begin
-  Command := 'cmd.exe /C rd /S /Q "' + DirPath + '"';
-  Result := Exec(Command, '', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  if ResultCode = 0 then
-    Result := True
-  else
-    Result := False;
-end;
-
-function TryRemoveDir(const DirPath: string): Boolean;
-var
-  RetryCount: Integer;
-begin
-  RetryCount := 0;
-  Result := False;
-  while (RetryCount < 1) and (not Result) do
+  Command := Format('cmd.exe /C rd /s /q "%s"', [DirPath]);
+  Log('Executing delete command: ' + Command);
+  if Exec(Command, '', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    Result := RemoveDir(DirPath);
-    if not Result then
-    begin
-      Log('Failed to delete directory: ' + DirPath + ', retrying...');
-      Sleep(1000); // Wait for 1 second before retrying
-    end;
-    Inc(RetryCount);
-  end;
-  if not Result then
-  begin
-    Log('Standard delete failed, attempting forceful delete...');
-    Result := ForceRemoveDir(DirPath);
-  end;
-  if Result then
-    //Log('Successfully deleted directory: ' + DirPath)
-  else
-    Log('Failed to delete directory after retries: ' + DirPath);
-end;
-
-procedure CopyFileAndRenameIfNeeded(const SourceFile, DestFile: string);
-var
-  DestFileNew: string;
-  Count: Integer;
-begin
-  Count := 0;
-  DestFileNew := DestFile;
-  while FileExists(DestFileNew) do
-  begin
-    Inc(Count);
-    DestFileNew := ChangeFileExt(DestFile, '') + '_' + IntToStr(Count) + ExtractFileExt(DestFile);
-  end;
-
-  if not FileCopy(SourceFile, DestFileNew, True) then
-  begin
-    Log('Failed to copy file: ' + SourceFile + ' to ' + DestFileNew);
-    RaiseException('Failed to copy file: ' + SourceFile);
+    if ResultCode = 0 then
+      Log('Successfully deleted directory: ' + DirPath)
+    else
+      Log('Failed to delete directory: ' + DirPath + ' with error code: ' + IntToStr(ResultCode));
   end
   else
-  begin
-    if not DeleteFile(SourceFile) then
-    begin
-      Log('Failed to delete original file: ' + SourceFile);
-    end;
-  end;
+    Log('Failed to execute delete command for directory: ' + DirPath);
 end;
 
-procedure CopyDirectory(const SourceDir, DestDir: string);
+procedure MoveDirectory(const SourceDir, DestDir: string);
+// Uses robocopy to move a directory
 var
-  FindRec: TFindRec;
-  SourceFile, DestFile: string;
+  ResultCode: Integer;
+  MoveCommand: string;
 begin
-  if not DirExists(DestDir) then
+  // Ensure the destination directory exists
+  //Log('Ensuring destination directory exists: ' + DestDir);
+  if not DirectoryExists(DestDir) then
   begin
     if not CreateDir(DestDir) then
     begin
-      Log('Failed to create directory: ' + DestDir);
-      RaiseException('Failed to create directory: ' + DestDir);
+      Log('Failed to create destination directory: ' + DestDir);
+      Exit;
     end;
   end;
+  //Log('Successfully ensured destination directory exists: ' + DestDir);
 
-  if FindFirst(SourceDir + '\*', FindRec) then
+  // Move the directory using robocopy
+  //Log('Executing robocopy move command from ' + SourceDir + ' to ' + DestDir);
+  MoveCommand := 'robocopy "' + SourceDir + '" "' + DestDir + '" /MOVE /E /MT:16';
+  if Exec('cmd.exe', '/C ' + MoveCommand, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    try
-      repeat
-        SourceFile := SourceDir + '\' + FindRec.Name;
-        DestFile := DestDir + '\' + FindRec.Name;
-
-        if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0 then
-        begin
-          if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
-          begin
-            CopyDirectory(SourceFile, DestDir + '\' + FindRec.Name);
-          end;
-        end
-        else
-        begin
-          CopyFileAndRenameIfNeeded(SourceFile, DestFile);
-        end;
-      until not FindNext(FindRec);
-    finally
-      FindClose(FindRec);
-    end;
-  end;
-
-  // Attempt to delete the source directory after copying
-  if not TryRemoveDir(SourceDir) then
-  begin
-    Log('Failed to delete original directory: ' + SourceDir);
-  end;
+    if ResultCode < 8 then
+      //Log('Successfully moved directory: ' + SourceDir + ' to ' + DestDir)
+    else
+      Log('Failed to move directory: ' + SourceDir + ' to ' + DestDir + ' with error code: ' + IntToStr(ResultCode));
+  end
+  else
+    Log('Failed to execute move command for directory: ' + SourceDir + ' to ' + DestDir);
 end;
 
 procedure MergeGameDataFolders;
+// Takes contents from downloads and puts them together before moving to KSP directory
 var
-  DownloadsDir, GameDataMerged: string;
+  DownloadsDir, GameDataMerged, SourceDir, GameDataDir: string;
   FindRec: TFindRec;
-  SourceDir: string;
   ProgressCounter: Integer;
 begin
   // Define the source and destination directories
   DownloadsDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
   GameDataMerged := DownloadsDir + '\GameDataMerged';
-	
+  
   // Ensure the GameDataMerged directory exists
   if not DirExists(GameDataMerged) then
   begin
@@ -1748,26 +1699,27 @@ begin
     end
     else
     begin
-      //Log('Successfully created GameDataMerged directory: ' + GameDataMerged);
+      Log('Successfully created GameDataMerged directory: ' + GameDataMerged);
     end;
   end;
 
   ProgressCounter := 0;
+  WizardForm.Update;
 
   if FindFirst(DownloadsDir + '\*', FindRec) then
   begin
     try
       repeat
         SourceDir := DownloadsDir + '\' + FindRec.Name;
+        GameDataDir := SourceDir;
 
-        // Skip if it's not a directory or if it's the GameDataMerged directory itself or if it's a zip file
-        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0) and
+        // Skip if it's not a directory or if it's the GameDataMerged directory itself
+        if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) and
            (FindRec.Name <> '.') and (FindRec.Name <> '..') and
-           (SourceDir <> GameDataMerged) and
-           (ExtractFileExt(FindRec.Name) <> '.zip') then
+           (SourceDir <> GameDataMerged) then
         begin
-          Log('Moving directory: ' + SourceDir + ' to ' + GameDataMerged);
-          CopyDirectory(SourceDir, GameDataMerged);
+          Log('Moving contents of GameData directory: ' + GameDataDir + ' to ' + GameDataMerged);
+          MoveDirectory(GameDataDir, GameDataMerged);
         end;
         
         // Update progress
@@ -1781,45 +1733,14 @@ begin
       FindClose(FindRec);
     end;
   end;
+	
+	// Do not want StockScatterConfigs and StockVolumetricConfigs
+	DeleteDirectory(GameDataMerged + '\StockScatterConfigs');
+	DeleteDirectory(GameDataMerged + '\StockVolumetricConfigs');
+
   MergePage.SetProgress(50, 50);
   WizardForm.Update;
   MergePage.SetProgress(DownloadList.Count, DownloadList.Count);
-end;
-
-procedure MoveParallaxDirectories;
-var
-  SourceDir, DestDir: string;
-begin
-  Log('Moving Parallax and Parallax_StockTextures to GameData directory.');
-  
-  // Define the source and destination directories
-  SourceDir := ExpandConstant('{userappdata}\RSSRebornDownloads\GameDataMerged');
-  DestDir := SourceDir + '\GameData';
-
-  // Move Parallax directory
-  if DirExists(SourceDir + '\Parallax') then
-  begin
-    Log('Moving directory: ' + SourceDir + '\Parallax to ' + DestDir);
-    CopyDirectory(SourceDir + '\Parallax', DestDir + '\Parallax');
-    if not TryRemoveDir(SourceDir + '\Parallax') then
-    begin
-      Log('Failed to delete original Parallax directory.');
-    end;
-  end;
-
-  // Move Parallax_StockTextures directory
-  if DirExists(SourceDir + '\Parallax_StockTextures') then
-  begin
-    Log('Moving directory: ' + SourceDir + '\Parallax_StockTextures to ' + DestDir);
-    CopyDirectory(SourceDir + '\Parallax_StockTextures', DestDir + '\Parallax_StockTextures');
-    if not TryRemoveDir(SourceDir + '\Parallax_StockTextures') then
-    begin
-      Log('Failed to delete original Parallax_StockTextures directory.');
-    end;
-  end;
-  
-  Log('Successfully moved Parallax and Parallax_StockTextures directories.');
-  Log('Completed merging GameData folders');
 end;
 
 procedure RemoveObsoleteFolders;
@@ -1879,6 +1800,7 @@ begin
 end;
 
 procedure MoveEVEAndScatterer;
+// If using Blackrack's Raymarched Volumetrics
 var
   SourceDir, DestDir, SearchPattern, SourceFile, DestFile, CurrentRVLoc, DestRVLoc: string;
   FindRec: TFindRec;
@@ -1917,20 +1839,11 @@ begin
 		CurrentRVLoc := DestFile;
 		DestRVLoc := DownloadsDir + '\RaymarchedVolumetrics';
 		Extract7Zip(CurrentRVLoc, DestRVLoc)
-		
-		// Do not want StockScatterConfigs and StockVolumetricConfigs
-		if not TryRemoveDir(DestRVLoc + '\RaymarchedVolumetrics\StockScatterConfigs') then
-    begin
-      Log('Failed to delete StockScatterConfigs.');
-    end;
-		if not TryRemoveDir(DestRVLoc + '\RaymarchedVolumetrics\StockVolumetricConfigs') then
-    begin
-      Log('Failed to delete StockVolumetricConfigs.');
-    end;
   end;
 end;
 
 procedure ExtractProc;
+// Process to use 7 zip on each folder in downloads directory
 var
   I, PartCount, Count: Integer;
   FileName, CurrentLoc, URL, DownloadItem, Dest, EndDest: string;
@@ -1942,16 +1855,19 @@ begin
   begin
 	  Count := DownloadList.Count;
     Log('Not moving/extracting Blackrack''s Volumetrics');
+  	ExtractPage.SetProgress(0, Count);
   end
   else
   begin
+	  Count := DownloadList.Count + 1;
+		ExtractPage.SetProgress(0, Count);
 		Log('Moving/extracting Blackrack''s Volumetrics');
 		CurrentFileLabelE.Caption := 'Extracting: Raymarched Volumetrics';
-	  MoveEVEAndScatterer;
-		Count := DownloadList.Count + 1;
+		WizardForm.Update;
+		MoveEVEAndScatterer;
+	  ExtractPage.SetProgress(1, Count);
+		WizardForm.Update;
   end;
-	
-	ExtractPage.SetProgress(0, Count);
 	
   for I := 0 to DownloadList.Count - 1 do
   begin
@@ -2237,7 +2153,6 @@ begin
   Result := True;
   try
     MergeGameDataFolders;
-		MoveParallaxDirectories;
     Log('GameData folders merged successfully.');
 		Log('========================================================');
   except
