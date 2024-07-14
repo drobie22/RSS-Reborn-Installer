@@ -1239,7 +1239,7 @@ begin
   if EVEAndScattererCheckbox.Checked then
   begin
     Log('EVE and Scatterer download confirmation checked');
-    MsgBox('Please ensure that Blackrack''s Patreon EVE and Scatterer zip folders are in your downloads.', mbInformation, MB_OK);
+    MsgBox('Please ensure that Blackrack''s Raymarched Volumetrics zip from Patreon is on your desktop.', mbInformation, MB_OK);
   end;
 end;
 
@@ -1283,7 +1283,7 @@ begin
   EVEAndScattererCheckbox.Top := ScaleY(215);
   EVEAndScattererCheckbox.Width := WizardForm.ClientWidth - ScaleX(36);
   EVEAndScattererCheckbox.Height := ScaleY(40);
-  EVEAndScattererCheckbox.Caption := '(Optional) I am using Blackrack''s EVE and Scatterer.';
+  EVEAndScattererCheckbox.Caption := '(Optional) I am using Blackrack''s Volumetric Clouds.';
   EVEAndScattererCheckbox.Checked := False;
   Log('EVE and Scatterer download confirmation checkbox created');
   
@@ -1556,21 +1556,31 @@ begin
     AddToDownloadList(BodyRepos[I], Resolution, ExpandConstant('{tmp}\') + ExtractBodyName(BodyRepos[I]) + '_' + Resolution + '.7z');
   end;
 
-  // RSSVE-Configs (if EVE and Scatterer are installed)
-  if not EVEAndScattererCheckbox.Checked then
-    AddToDownloadList('RSS-Reborn/RSSVE-Configs', '', ExpandConstant('{tmp}\RSSVE_Configs.7z'));
+  // RSSVE-Configs 
+  AddToDownloadList('RSS-Reborn/RSSVE-Configs', '', ExpandConstant('{tmp}\RSSVE_Configs.7z'));
 
   // RSSVE-Textures
-  if not EVEAndScattererCheckbox.Checked then
   AddToDownloadList('RSS-Reborn/RSSVE-Textures', '', ExpandConstant('{tmp}\RSSVE_Textures.7z'));
 
   // Scatterer (if not using Blackrack's)
-  if not ScattererDownloaded then
+	if not EVEAndScattererCheckbox.Checked then
+  begin
     AddToDownloadList('LGhassen/Scatterer', '', ExpandConstant('{tmp}\Scatterer.zip'));
+  end
+  else
+  begin
+    Log('Skipping, using Blackrack''s Volumetrics');
+  end;
 
   // EVE (if not using Blackrack's)
-  if not EVEDownloaded then
+  if not EVEAndScattererCheckbox.Checked then
+  begin
     AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', ExpandConstant('{tmp}\EVE.zip'));
+  end
+  else
+  begin
+    Log('Skipping, using Blackrack''s Volumetrics');
+  end;
 
   // Download Parallax
 		ParallaxVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
@@ -1621,7 +1631,7 @@ var
 begin
   RetryCount := 0;
   Result := False;
-  while (RetryCount < 5) and (not Result) do
+  while (RetryCount < 1) and (not Result) do
   begin
     Result := RemoveDir(DirPath);
     if not Result then
@@ -1868,17 +1878,85 @@ begin
   Log('Folders removal completed.');
 end;
 
+procedure MoveEVEAndScatterer;
+var
+  SourceDir, DestDir, SearchPattern, SourceFile, DestFile, CurrentRVLoc, DestRVLoc: string;
+  FindRec: TFindRec;
+begin
+  if EVEAndScattererCheckbox.Checked then
+  begin
+    SourceDir := ExpandConstant('{userdesktop}'); 
+    DestDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
+
+    // Move EVE and Scatterer zip files
+    SearchPattern := 'RaymarchedVolumetrics*.zip';
+    if FindFirst(SourceDir + '\' + SearchPattern, FindRec) then
+    begin
+      try
+        repeat
+          SourceFile := SourceDir + '\' + FindRec.Name;
+          DestFile := DestDir + '\' + FindRec.Name;
+          try
+            CopyFileAndDelete(SourceFile, DestFile);
+            Log('Moved ' + FindRec.Name + ' to ' + DestDir);
+          except
+            Log('Failed to move ' + FindRec.Name + ' to ' + DestDir);
+						MsgBox('Failed to move' + FindRec.Name + '. Please check the logs for details.', mbError, MB_OK);
+						Exit;
+          end;
+        until not FindNext(FindRec);
+      finally
+        FindClose(FindRec);
+      end;
+    end
+    else
+    begin
+      Log('No files matching ' + SearchPattern + ' found in ' + SourceDir);
+    end;
+		
+		CurrentRVLoc := DestFile;
+		DestRVLoc := DownloadsDir + '\RaymarchedVolumetrics';
+		Extract7Zip(CurrentRVLoc, DestRVLoc)
+		
+		// Do not want StockScatterConfigs and StockVolumetricConfigs
+		if not TryRemoveDir(DestRVLoc + '\RaymarchedVolumetrics\StockScatterConfigs') then
+    begin
+      Log('Failed to delete StockScatterConfigs.');
+    end;
+		if not TryRemoveDir(DestRVLoc + '\RaymarchedVolumetrics\StockVolumetricConfigs') then
+    begin
+      Log('Failed to delete StockVolumetricConfigs.');
+    end;
+  end;
+end;
+
 procedure ExtractProc;
 var
-  I, PartCount: Integer;
+  I, PartCount, Count: Integer;
   FileName, CurrentLoc, URL, DownloadItem, Dest, EndDest: string;
   IsMultiPart, ExtractionSuccessful: Boolean;
 begin
-  ExtractPage.SetProgress(0, DownloadList.Count);
+	
+	// First move and extract Raymarched Volumetrics if checked 
+	if not EVEAndScattererCheckbox.Checked then
+  begin
+	  Count := DownloadList.Count;
+    Log('Not moving/extracting Blackrack''s Volumetrics');
+  end
+  else
+  begin
+		Log('Moving/extracting Blackrack''s Volumetrics');
+		CurrentFileLabelE.Caption := 'Extracting: Raymarched Volumetrics';
+	  MoveEVEAndScatterer;
+		Count := DownloadList.Count + 1;
+  end;
+	
+	ExtractPage.SetProgress(0, Count);
+	
   for I := 0 to DownloadList.Count - 1 do
   begin
     WizardForm.Update;
-    ExtractPage.SetProgress(I, DownloadList.Count);
+    ExtractPage.SetProgress(I, Count);
     DownloadItem := DownloadList[I];
     URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
     FileName := CustomExtractFileName(URL);
@@ -1946,7 +2024,7 @@ begin
       MsgBox('Extraction process encountered issues for ' + CurrentLoc, mbError, MB_OK);
     end;
   end;
-  ExtractPage.SetProgress(DownloadList.Count, DownloadList.Count);
+  ExtractPage.SetProgress(DownloadList.Count, Count);
 end;
 
 procedure VerifyDownloads;
