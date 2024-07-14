@@ -15,6 +15,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 - [Kerbal Space Program](https://www.kerbalspaceprogram.com/)
 - [RP-1 RSS/RO Modpack](https://github.com/KSP-RO/RP-0) (must be installed and launched at least once)
 - [7-Zip](https://www.7-zip.org/download.html) (for extracting files)
+- 50 GB free storage space
 - (Optional) [Blackrack's Volumetric Clouds](https://www.patreon.com/blackrack) If you wish to include this, you must have his EVE and Scatterer zips downloaded to your downloads folder so the installer can grab them. 
     - This is in place to ensure you have obtained the files through Patreon. 
     - RSS Reborn Installer will never circumvent support for mod developers. 
@@ -31,7 +32,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 1. Run the downloaded `RSS-Reborn-Installer.exe`.
 2. Follow the on-screen instructions:
    - Confirm that you have successfully launched RP-1 at least once.
-   - Optionally confirm that you have downloaded Blackrack's EVE and Scatterer enhancements.
+   - Optionally confirm that you have downloaded Blackrack's Raymarched Volumetrics from Patreon.
        - If downloaded, drag zip to desktop so the installer can grab it.
    - Select the desired resolutions for textures.
    - Specify a game directory (defaults to steam install). 
@@ -51,7 +52,7 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
 - If you load the game but get stuck on an infinite black loading screen with spinning planets, check to see if you have the stock Squad folders in GameData. Otherwise, submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues).
 - GitHub naturally doesn't like programs fetching lots of data at once. Usually this is capped at 60 calls per hour. The installer will run 20-40 requests to GitHub in a run depending on resolutions selected. If you see an error related to GitHub's rate limit, please wait an hour before trying again. 
     - Alternatively, there is a method to set up an access token on your machine which the installer will recognize and use to increase the limit to 5000 calls per hour. (Not sure why you need that, but you do you). 
-    - Instructions will be implimented soon. 
+    - Instructions are at the bottom of this page.
     - Installer will always grab the latest files from GitHub.
 - Help! No resolutions showing for a body! 
     - Most likely the latest release of that body was empty. Before you start installation, manually download the previous release. 
@@ -68,3 +69,41 @@ Big thank you to Ballisticfox, Techo, and VaNnadin for creating and maintaining 
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Setting Up a GitHub Environment Variable
+
+Follow these steps to set up an environment access token to increase GitHub API calls.
+
+### Step 1: Sign in to GitHub
+1. Go to [github.com](https://github.com).
+2. Sign in with your GitHub credentials.
+
+### Step 2: Click on your Profile
+1. Click on your profile icon in the upper-right corner.
+2. Select "Developer Settings" from the menu.
+
+### Step 3: Personal Access Tokens
+1. In Developer settings, click on "Personal Access Tokens".
+2. Click on "Tokens (classic)".
+
+### Step 4: Generate New Token
+1. Click on the "Generate new token" drop down.
+2. Select "Generate new token (classic)".
+3. You may be requred to confirm access using the GitHub mobile app.
+
+### Step 5: Token Details
+1. In the "Note" field, name the token whatever you want.
+2. Set the expiration, a week should be fine.
+3. Check the first "repo" box, that is enough.
+4. At the botom, click the "Generate Token" button.
+
+### Step 6: Save Environment Token
+1. Copy the given personal access token. It will not be shown again.
+
+### Step 7: Command Line
+1. Open windows command line
+2. **Type:** setx MY_ACCESS_TOKEN "YOUR_TOKEN"
+
+### Step 8: Run Installer Again
+1. The installer will automatically recognize MY_ACCESS_TOKEN, and your GitHub API limit will be increased!
+
