@@ -1,4 +1,4 @@
-# RSS Reborn Installer (not approved for use just yet)
+# RSS Reborn Installer
 
 Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer! This installer is designed to help you easily set up Ballisticfox's RSS Reborn mod for RP-1 (RSS/RO).
 
@@ -32,6 +32,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 2. Follow the on-screen instructions:
    - Confirm that you have successfully launched RP-1 at least once.
    - Optionally confirm that you have downloaded Blackrack's EVE and Scatterer enhancements.
+       - If downloaded, drag zip to desktop so the installer can grab it.
    - Select the desired resolutions for textures.
    - Specify a game directory (defaults to steam install). 
 3. The installer will download, extract, merge, and move the necessary files into your gamedata.
@@ -51,7 +52,7 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
 - GitHub naturally doesn't like programs fetching lots of data at once. Usually this is capped at 60 calls per hour. The installer will run 20-40 requests to GitHub in a run depending on resolutions selected. If you see an error related to GitHub's rate limit, please wait an hour before trying again. 
     - Alternatively, there is a method to set up an access token on your machine which the installer will recognize and use to increase the limit to 5000 calls per hour. (Not sure why you need that, but you do you). 
     - Instructions will be implimented soon. 
-    - Installer will always grab the latest files from GitHub
+    - Installer will always grab the latest files from GitHub.
 - Help! No resolutions showing for a body! 
     - Most likely the latest release of that body was empty. Before you start installation, manually download the previous release. 
 
