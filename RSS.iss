@@ -1800,7 +1800,7 @@ begin
   end;
 
   // Search for directories starting with "scatterer" in DownloadsDir
-  if FindFirst(DownloadsDir + '\scatterer*', FindRec) then
+  if FindFirst(DownloadsDir + '\Scatterer*', FindRec) then
   begin
     try
       repeat
@@ -1836,8 +1836,9 @@ var
   ProgressCounter: Integer;
 begin
   // Define the source and destination directories
+  DownloadsDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
   GameDataMerged := DownloadsDir + '\GameDataMerged';
-  
+	
   // Ensure the GameDataMerged directory exists
   if not DirExists(GameDataMerged) then
   begin
@@ -1871,7 +1872,7 @@ begin
            (FindRec.Name <> '.') and (FindRec.Name <> '..') and
            (SourceDir <> GameDataMerged) and
            (FindRec.Name <> 'RaymarchedVolumetrics') and
-           (Pos('scatterer', LowerCase(FindRec.Name)) <> 1) then
+           (Pos('Scatterer', FindRec.Name) = 0) then
         begin
           Log('Moving contents of GameData directory: ' + GameDataDir + ' to ' + GameDataMerged);
           MoveDirectory(GameDataDir, GameDataMerged);
@@ -2457,7 +2458,7 @@ procedure DeinitializeSetup;
 // Cleans up resources and temporary files after installation.
 begin
   Log('Deinitializing setup and cleaning up resources');  
-	//ClearDownloadDirectory;
+	ClearDownloadDirectory;
   DeinitializeVariables;
 end;
 
