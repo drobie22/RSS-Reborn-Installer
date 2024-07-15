@@ -22,12 +22,16 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 
 ## How to Download and Install
 
-### Step 1: Download the Installer
+### Step 1: Backup your GameData!
+
+1. Go to your game directory and backup the GameData folder. This way you can always revert in case of an issue.
+
+### Step 2: Download the Installer
 
 1. Go to the [Releases](https://github.com/drobie22/RSS-Reborn-Installer/releases) page.
 2. Download the latest version of the `RSS-Reborn-Installer.exe`.
 
-### Step 2: Run the Installer
+### Step 3: Run the Installer
 
 1. Run the downloaded `RSS-Reborn-Installer.exe`.
 2. Follow the on-screen instructions:
@@ -38,7 +42,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
    - Specify a game directory (defaults to steam install). 
 3. The installer will download, extract, merge, and move the necessary files into your gamedata.
 
-### Step 3: Launch KSP
+### Step 4: Launch KSP
 
 1. After the installation is complete, launch Kerbal Space Program.
 2. Enjoy your enhanced RSS Reborn experience!
@@ -47,6 +51,8 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
 
 ## Troubleshooting
 
+- Parallax is giving me a pop-up while the game loads saying it is missing a texture file!?
+      - Completely normal and unavoidable. You can ignore.
 - Ensure that 7-Zip is installed in the default location.
 - Check to make sure RP-1 (RSS/RO) can successfully run before using this installer. If that doesnt work, RSS Reborn will obviously not work. 
 - If you load the game but get stuck on an infinite black loading screen with spinning planets, check to see if you have the stock Squad folders in GameData. Otherwise, submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues).
