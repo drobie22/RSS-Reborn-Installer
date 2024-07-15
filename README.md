@@ -38,6 +38,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
    - Confirm that you have successfully launched RP-1 at least once.
    - Optionally confirm that you have downloaded Blackrack's Raymarched Volumetrics from Patreon.
        - If downloaded, drag zip to desktop so the installer can grab it.
+       - Ensure only one folder named "RaymarchedVolumetrics" is on your desktop.
    - Select the desired resolutions for textures.
    - Specify a game directory (defaults to steam install). 
 3. The installer will download, extract, merge, and move the necessary files into your gamedata.
@@ -66,7 +67,8 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
 ## Future Updates
 
 - Support for downloading deferred rendering, user-downloaded and automated installation. 
-- Support for retrieving files from other releases, not just the latest. 
+- Support for retrieving files from other releases, not just the latest.
+- Installer can automatically back up your GameData folder and compress it in case of failure.
 
 ## Credits
 
