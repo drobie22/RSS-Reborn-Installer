@@ -6,6 +6,10 @@
 ; Some sections could be done better, more efficiently, and be overall less complex
 ; Feel free to contribute, or offer constructive criticism 
 
+; The entire system for storing api JSON data should be redone
+; It is very much held together with duct tape and prayers
+; ...but it works
+
 #define MyAppName "RSS Reborn Installer"
 #define MyAppVersion "0.5"
 #define MyAppPublisher "DRobie22"
@@ -64,7 +68,8 @@ var
   BodySizes: array of string;	
 	BodyVersions: array of string;
 	BodiesWithNoAssets: TStringList;
-	CachedReleaseInfo: TStringList;
+	StoreDir: string;
+	StoredReleaseInfo: TStringList;
 	CurrentFileLabel: TNewStaticText;
 	CurrentFileLabelE: TNewStaticText;
 	CurrentFileLabelM: TNewStaticText;
@@ -94,6 +99,9 @@ var
   ScattererDownloaded: Boolean;
 	UserCanceled: Boolean;
   wpSelectResolutions: Integer;
+  ReleaseStore: TStringList;
+  AssetsStore: TStringList;
+
 	
 type
   TResolutionPages = array of TWizardPage;
@@ -110,9 +118,9 @@ begin
     DownloadList.Free;
   DownloadList := TStringList.Create;
   
-  if Assigned(CachedReleaseInfo) then
-    CachedReleaseInfo.Free;
-  CachedReleaseInfo := TStringList.Create;
+  if Assigned(StoredReleaseInfo) then
+    StoredReleaseInfo.Free;
+  StoredReleaseInfo := TStringList.Create;
   
   if Assigned(ExtractionLogs) then
     ExtractionLogs.Free;
@@ -241,9 +249,16 @@ end;
 function InitializeSetup: Boolean;
 // Begin the sequence by checking for space and 7 zip
 begin
+  ReleaseStore := TStringList.Create;
+  AssetsStore := TStringList.Create;
   Result := True;
 	ClearDownloadDirectory;
 	ReadGitHubAccessTokenOnce;
+	
+	StoreDir := ExpandConstant('{localappdata}\YourInstaller\Store\');
+  if not DirExists(StoreDir) then
+    ForceDirectories(StoreDir);
+		
   if not IsEnoughDiskSpaceAvailable then
   begin
     MsgBox('You need at least 50 GB of free disk space to install RSS-Reborn without issues.', mbError, MB_OK);
@@ -264,7 +279,7 @@ procedure DeinitializeVariables;
 // Frees allocated resources. Prevents memory leaks by releasing resources.
 begin
   DownloadList.Free;
-  CachedReleaseInfo.Free; 
+  StoredReleaseInfo.Free; 
 	ExtractionLogs.Free;
 	DownloadLogs.Free;
 	GitHubCount.Free;
@@ -598,69 +613,50 @@ begin
   Result := True;
 end;
 
-procedure CacheReleaseInfo(Repo, Resolution, ReleaseJSON, AssetsJSON: string);
-// Caches information fetched by HTTP
+procedure StoreReleaseInfo(Repo, Resolution, ReleaseJSON, AssetsJSON: string);
+// Adds info from called http into storage 
 var
-  CacheKey: string;
-  CachedData: string;
-  I: Integer;
+  StoreKey: string;
 begin
-  CacheKey := Repo + ':' + Resolution;
-  CachedData := ReleaseJSON + '|' + AssetsJSON;
-
-  // Check if the key already exists
-  for I := 0 to CachedReleaseInfo.Count - 1 do
-  begin
-    if Pos(CacheKey + '=', CachedReleaseInfo[I]) = 1 then
-    begin
-      // Update existing entry
-      CachedReleaseInfo[I] := CacheKey + '=' + CachedData;
-      Log('Updated cached data for ' + CacheKey);
-      Exit;
-    end;
-  end;
-
-  // Add new entry if not found
-  CachedReleaseInfo.Add(CacheKey + '=' + CachedData);
-  Log('Cached new data for ' + CacheKey);
+  StoreKey := Repo + '_' + Resolution;
+  ReleaseStore.Add(StoreKey + '=' + ReleaseJSON);
+  AssetsStore.Add(StoreKey + '=' + AssetsJSON);
 end;
 
-function GetCachedJSONForRepo(Repo, Resolution: string; var ReleaseJSON: string; var AssetsJSON: string): Boolean;
+function GetStoredJSONForRepo(Repo, Resolution: string; var ReleaseJSON, AssetsJSON: string): Boolean;
+// Retrieves info from storage when needed based on body and resolution 
 var
-  I: Integer;
-  CacheKey: string;
-  CachedData: string;
-  DelimPos: Integer;
+  StoreKey, Line: string;
+  i: Integer;
 begin
+  StoreKey := Repo + '_' + Resolution;
+  ReleaseJSON := '';
+  AssetsJSON := '';
   Result := False;
-  CacheKey := Repo + ':' + Resolution;
-  for I := 0 to CachedReleaseInfo.Count - 1 do
+
+  // Loop through ReleaseStore to find the StoreKey
+  for i := 0 to ReleaseStore.Count - 1 do
   begin
-    CachedData := CachedReleaseInfo[I];
-    DelimPos := Pos('=', CachedData);
-    if DelimPos > 0 then
+    Line := ReleaseStore[i];
+    if Pos(StoreKey + '=', Line) = 1 then
     begin
-      if SameText(Trim(Copy(CachedData, 1, DelimPos - 1)), Trim(CacheKey)) then
-      begin
-        CachedData := Copy(CachedData, DelimPos + 1, Length(CachedData) - DelimPos);
-        DelimPos := Pos('|', CachedData);
-        if DelimPos > 0 then
-        begin
-          ReleaseJSON := Copy(CachedData, 1, DelimPos - 1);
-          AssetsJSON := Copy(CachedData, DelimPos + 1, Length(CachedData) - DelimPos);
-          Result := True;
-          Log('Cached data found for repo: ' + CacheKey);
-          Exit;
-        end
-        else
-        begin
-          Log('Invalid cached data format for repo: ' + CacheKey);
-          Exit;
-        end;
-      end;
+      ReleaseJSON := Copy(Line, Length(StoreKey) + 2, MaxInt);
+      Break;
     end;
   end;
-  Log('No cached data found for repo: ' + CacheKey);
+
+  // Loop through AssetsStore to find the StoreKey
+  for i := 0 to AssetsStore.Count - 1 do
+  begin
+    Line := AssetsStore[i];
+    if Pos(StoreKey + '=', Line) = 1 then
+    begin
+      AssetsJSON := Copy(Line, Length(StoreKey) + 2, MaxInt);
+      Break;
+    end;
+  end;
+
+  Result := (ReleaseJSON <> '') and (AssetsJSON <> '');
 end;
 
 function GetFileSizeForLatestReleaseFromAssets(AssetsJSON: string): string;
@@ -745,9 +741,9 @@ var
   HttpCli: Variant;
   CombinedResponse: string;
 begin
-  if GetCachedJSONForRepo(Repo, '', LatestReleaseJSON, LatestReleaseAssetsJSON) then
+  if GetStoredJSONForRepo(Repo, '', LatestReleaseJSON, LatestReleaseAssetsJSON) then
   begin
-    Log('Using cached release info for ' + Repo);
+    Log('Using Stored release info for ' + Repo);
     LatestReleaseVersion := ExtractJSONField(LatestReleaseJSON, '"tag_name":"');
     Exit;
   end;
@@ -783,8 +779,8 @@ begin
       LatestReleaseVersion := ExtractJSONField(CombinedResponse, '"tag_name":"');
       LatestReleaseAssetsJSON := ExtractJSONArray(CombinedResponse, '"assets":[');
 
-      // Cache the combined JSON responses
-      CacheReleaseInfo(Repo, '', LatestReleaseJSON, LatestReleaseAssetsJSON);
+      // Store the combined JSON responses
+      StoreReleaseInfo(Repo, '', LatestReleaseJSON, LatestReleaseAssetsJSON);
     end
     else
     begin
@@ -880,17 +876,17 @@ begin
 end;
 
 function LatestReleaseHasFiles(Repo: string): Boolean;
-// Checks cache to see if release has assets
+// Checks Store to see if release has assets
 var
   ReleaseJSON, AssetsJSON: string;
 begin
   Log('Checking if latest release has files for repository: ' + Repo);
   Result := False;
   
-  if GetCachedJSONForRepo(Repo, '', ReleaseJSON, AssetsJSON) then
+  if GetStoredJSONForRepo(Repo, '', ReleaseJSON, AssetsJSON) then
   begin
     LatestReleaseAssetsJSON := AssetsJSON;
-    Log('Using cached release info for ' + Repo);
+    Log('Using Stored release info for ' + Repo);
     
     if Pos('"assets":[', AssetsJSON) > 0 then
     begin
@@ -899,12 +895,12 @@ begin
     end
     else
     begin
-      Log('No assets found in cached release info.');
+      Log('No assets found in Stored release info.');
     end;
   end
   else
   begin
-    Log('Cached data not found for repository: ' + Repo);
+    Log('Stored data not found for repository: ' + Repo);
   end;
 end;
 
@@ -981,7 +977,7 @@ begin
 end;
 
 function GetLatestReleaseVersion(Repo: string): string;
-//Extracts release information from cached data
+//Extracts release information from Stored data
 var
   ReleaseJSON, AssetsJSON: string;
   I, J: Integer;
@@ -989,10 +985,10 @@ begin
   Log('Getting latest release version for repository: ' + Repo);
   Result := '';
   
-  if GetCachedJSONForRepo(BodyRepos[I], '', ReleaseJSON, AssetsJSON) then
+  if GetStoredJSONForRepo(BodyRepos[I], '', ReleaseJSON, AssetsJSON) then
   begin
     LatestReleaseJSON := ReleaseJSON;
-    Log('Using cached release info for ' + Repo);
+    Log('Using Stored release info for ' + Repo);
     
     I := Pos('"tag_name":"', ReleaseJSON);
     if I > 0 then
@@ -1007,12 +1003,12 @@ begin
     end
     else
     begin
-      Log('No tag_name found in cached release info.');
+      Log('No tag_name found in Stored release info.');
     end;
   end
   else
   begin
-    Log('Cached data not found for repository: ' + Repo);
+    Log('Stored data not found for repository: ' + Repo);
   end;
 end;
 
@@ -1054,7 +1050,7 @@ begin
       Exit;
     end;
 
-    if GetCachedJSONForRepo(BodyRepos[I], '', ReleaseJSON, AssetsJSON) then
+    if GetStoredJSONForRepo(BodyRepos[I], '', ReleaseJSON, AssetsJSON) then
     begin
       LatestReleaseJSON := ReleaseJSON;
       LatestReleaseAssetsJSON := AssetsJSON;
@@ -1117,7 +1113,7 @@ begin
       Exit;
     end;
 
-    // Use cached data from RetrieveBodyInfo
+    // Use Stored data from RetrieveBodyInfo
     LatestReleaseAssetsJSON := AssetDataList[RepoIndex].Text;
 
     StartPos := 1;
@@ -1132,7 +1128,7 @@ begin
         begin
           AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
           Resolution := ExtractResolution(AssetName);
-          Log('Found asset: ' + AssetName + ' with resolution: ' + Resolution);
+          Log('Populate Resolutions found asset: ' + AssetName + ' with resolution: ' + Resolution);
 
           // Exclude files with "scale" in the name
           if (Pos('scale', LowerCase(AssetName)) > 0) then
@@ -1162,13 +1158,13 @@ begin
                 Sizes.Add(IntToStr(Size));
                 Log('Added resolution: ' + Resolution + ' with size: ' + IntToStr(Size));
 								
-								// Cache the resolution-specific data
+								// Store the resolution-specific data
 								if (BodyRepos[RepoIndex] <> '') and (Resolution <> '') then
 								begin
 									ReleaseJSON := LatestReleaseJSON;
 									AssetsJSON := LatestReleaseAssetsJSON;
-									CachedReleaseInfo.Add(BodyRepos[RepoIndex] + ':' + Resolution + '=' + ReleaseJSON + '|' + AssetsJSON);
-									Log('Cached resolution-specific data for repo: ' + BodyRepos[RepoIndex] + ' with resolution: ' + Resolution);
+									StoredReleaseInfo.Add(BodyRepos[RepoIndex] + ':' + Resolution + '=' + ReleaseJSON + '|' + AssetsJSON);
+									Log('Stored resolution-specific data for repo: ' + BodyRepos[RepoIndex] + ' with resolution: ' + Resolution);
 								end;
 								
               end
@@ -1394,7 +1390,6 @@ begin
     SizesList[I] := TStringList.Create;
     PopulateResolutions(ComboBox, I, SizesList[I]);
 
-		Log('========================================================');
     Log('Dropdown for ' + BodyRepos[I] + ' created');
 
 		// Texture Version No.
@@ -1449,21 +1444,19 @@ var
   ReleaseJSON, AssetsJSON: string;
 begin
   Result := TStringList.Create;
-  Log('Attempting to retrieve cached data for repository: ' + Repo);
+  Log('GetRepoDownloadURLs is attempting to retrieve Stored data for repository: ' + Repo + ' with Resolution: ' + Resolution);
 
-  if GetCachedJSONForRepo(Repo, Resolution, ReleaseJSON, AssetsJSON) then
+  if GetStoredJSONForRepo(Repo, Resolution, ReleaseJSON, AssetsJSON) then
   begin
     LatestReleaseAssetsJSON := AssetsJSON;
     LatestReleaseJSON := ReleaseJSON;
-    Log('Using cached release info for ' + Repo);
+    Log('GetRepoDownloadURLs is using Stored release info for ' + Repo);
   end
   else
   begin
-    Log('No cached data found for ' + Repo + '. Fetching latest release info.');
+    Log('No Stored data found for ' + Repo + '. Fetching latest release info.');
     GetLatestReleaseHTTPInfo(Repo);
-    LatestReleaseAssetsJSON := LatestReleaseAssetsJSON;
-    LatestReleaseJSON := LatestReleaseJSON;
-    Log('Fetched latest release info for ' + Repo);
+    StoreReleaseInfo(Repo, Resolution, LatestReleaseJSON, LatestReleaseAssetsJSON);
   end;
 
   StartPos := 1;
@@ -1478,7 +1471,8 @@ begin
       begin
         AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
         Log('Found asset: ' + AssetName);
-        if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
+        
+        if (Resolution = '') or (ExtractResolution(AssetName) = Resolution) then
         begin
           I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
           if I > 0 then
@@ -1503,71 +1497,48 @@ begin
   Log('Completed retrieving download URLs for repository: ' + Repo);
 end;
 
-procedure AddToDownloadList(RepoName, Resolution, DestFilePath: string);
-// Adds a unique direct download link to a list to be executed
+procedure AddToDownloadList(Repo, Resolution, DestFilePath: string);
 var
   DownloadURLs: TStringList;
-  BrowserDownloadURL, AssetName: string;
   I, J: Integer;
   URLExists: Boolean;
-  ReleaseJSON, AssetsJSON: string;
 begin
   Log('========================================================');
-  Log('AddToDownloadList called for Repo: ' + RepoName + ' with Resolution: ' + Resolution);
+  Log('AddToDownloadList called for Repo: ' + Repo + ' with Resolution: ' + Resolution);
 
-  if Resolution = 'None' then
+  if not GetStoredJSONForRepo(Repo, Resolution, LatestReleaseJSON, LatestReleaseAssetsJSON) then
   begin
-    Log('Skipping download for ' + RepoName + ' as "None" is selected.');
-    Exit;
+    GetLatestReleaseHTTPInfo(Repo);
+    StoreReleaseInfo(Repo, Resolution, LatestReleaseJSON, LatestReleaseAssetsJSON);
   end;
 
-  if not GetCachedJSONForRepo(RepoName, Resolution, ReleaseJSON, AssetsJSON) then
-  begin
-    GetLatestReleaseHTTPInfo(RepoName);
-    ReleaseJSON := LatestReleaseJSON;
-    AssetsJSON := LatestReleaseAssetsJSON;
-    // Cache the resolution-specific data
-    CachedReleaseInfo.Add(RepoName + ':' + Resolution + '=' + ReleaseJSON + '|' + AssetsJSON);
-  end;
-
-  // Get the download URLs for the specified resolution
-  DownloadURLs := GetRepoDownloadURLs(RepoName, Resolution);
-
-  for I := 0 to DownloadURLs.Count - 1 do
-  begin
-    BrowserDownloadURL := DownloadURLs[I];
-
-    // Exclude the specific URL
-    if Pos('Parallax_StockTextures', BrowserDownloadURL) > 0 then
+  DownloadURLs := GetRepoDownloadURLs(Repo, Resolution);
+  try
+    for I := 0 to DownloadURLs.Count - 1 do
     begin
-      Log('Excluded URL: ' + BrowserDownloadURL);
-      Continue;
-    end;
-
-    // Check if the file is already in the download list
-    URLExists := False;
-    for J := 0 to DownloadList.Count - 1 do
-    begin
-      if Pos(BrowserDownloadURL, DownloadList[J]) > 0 then
+      URLExists := False;
+      for J := 0 to DownloadList.Count - 1 do
       begin
-        URLExists := True;
-        Log('Duplicate URL found in AddToDownloadList: ' + BrowserDownloadURL);
-        Break;
+        if Pos(DownloadURLs[I], DownloadList[J]) > 0 then
+        begin
+          URLExists := True;
+          Break;
+        end;
+      end;
+
+      if not URLExists then
+      begin
+        Log('Adding download URL: ' + DownloadURLs[I]);
+        DownloadList.Add(DownloadURLs[I] + '=' + DestFilePath);
+      end
+      else
+      begin
+        Log('Duplicate URL found and skipped: ' + DownloadURLs[I]);
       end;
     end;
-
-    if not URLExists then
-    begin
-      Log('Add to downloads in AddToDownloadList: ' + BrowserDownloadURL + ' as ' + DestFilePath);
-      DownloadList.Add(BrowserDownloadURL + '=' + DestFilePath);
-    end
-    else
-    begin
-      Log('Skip duplicate URL in AddToDownloadList: ' + BrowserDownloadURL);
-    end;
+  finally
+    DownloadURLs.Free;
   end;
-
-  DownloadURLs.Free;
 end;
 
 procedure InitializeDownloadList;
@@ -1781,7 +1752,7 @@ end;
 
 procedure MoveScattererGameData;
 var
-  SourceDir, DestDir, ScattererSourceDir, FindRecName: string;
+  DestDir, ScattererSourceDir, FindRecName: string;
   FindRec: TFindRec;
 begin
   Log('Moving Scatterer to GameData directory.');
@@ -2459,7 +2430,6 @@ procedure DeinitializeSetup;
 begin
   Log('Deinitializing setup and cleaning up resources');  
 	ClearDownloadDirectory;
-  DeinitializeVariables;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
