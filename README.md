@@ -52,7 +52,7 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
 ## Troubleshooting
 
 - Parallax is giving me a pop-up while the game loads saying it is missing a texture file!?
-      - Completely normal and unavoidable. You can ignore.
+    - Completely normal and unavoidable. You can ignore.
 - Ensure that 7-Zip is installed in the default location.
 - Check to make sure RP-1 (RSS/RO) can successfully run before using this installer. If that doesnt work, RSS Reborn will obviously not work. 
 - If you load the game but get stuck on an infinite black loading screen with spinning planets, check to see if you have the stock Squad folders in GameData. Otherwise, submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues).
