@@ -626,34 +626,41 @@ begin
 end;
 
 function GetCachedJSONForRepo(Repo, Resolution: string; var ReleaseJSON: string; var AssetsJSON: string): Boolean;
-// Gets info from cache
 var
-  CacheKey, CachedData: string;
-  I, DelimPos: Integer;
+  I: Integer;
+  CacheKey: string;
+  CachedData: string;
+  DelimPos: Integer;
 begin
   Result := False;
   CacheKey := Repo + ':' + Resolution;
-
   for I := 0 to CachedReleaseInfo.Count - 1 do
   begin
-    if Pos(CacheKey + '=', CachedReleaseInfo[I]) = 1 then
+    CachedData := CachedReleaseInfo[I];
+    DelimPos := Pos('=', CachedData);
+    if DelimPos > 0 then
     begin
-      CachedData := Copy(CachedReleaseInfo[I], Length(CacheKey) + 2, MaxInt); // +2 to skip '='
-      DelimPos := Pos('|', CachedData);
-      if DelimPos > 0 then
+      if SameText(Trim(Copy(CachedData, 1, DelimPos - 1)), Trim(CacheKey)) then
       begin
-        ReleaseJSON := Copy(CachedData, 1, DelimPos - 1);
-        AssetsJSON := Copy(CachedData, DelimPos + 1, Length(CachedData) - DelimPos);
-        Result := True;
-        Log('Cached data found for ' + CacheKey);
-        Exit;
-      end
-      else
-        Log('Invalid cached data format for ' + CacheKey);
+        CachedData := Copy(CachedData, DelimPos + 1, Length(CachedData) - DelimPos);
+        DelimPos := Pos('|', CachedData);
+        if DelimPos > 0 then
+        begin
+          ReleaseJSON := Copy(CachedData, 1, DelimPos - 1);
+          AssetsJSON := Copy(CachedData, DelimPos + 1, Length(CachedData) - DelimPos);
+          Result := True;
+          Log('Cached data found for repo: ' + CacheKey);
+          Exit;
+        end
+        else
+        begin
+          Log('Invalid cached data format for repo: ' + CacheKey);
+          Exit;
+        end;
+      end;
     end;
   end;
-
-  Log('No cached data found for ' + CacheKey);
+  Log('No cached data found for repo: ' + CacheKey);
 end;
 
 function GetFileSizeForLatestReleaseFromAssets(AssetsJSON: string): string;
@@ -815,50 +822,61 @@ begin
   Version := LatestReleaseVersion; 
   Size := GetFileSizeForLatestReleaseFromAssets(LatestReleaseAssetsJSON); 
   AssetURLs := TStringList.Create;
-
-  StartPos := 1;
-  while StartPos > 0 do
-  begin
-    I := PosEx('"name":"', LatestReleaseAssetsJSON, StartPos);
-    if I > 0 then
+  
+  try
+    StartPos := 1;
+    while StartPos > 0 do
     begin
-      I := I + Length('"name":"');
-      J := FindNextQuote(LatestReleaseAssetsJSON, I);
-      if J > 0 then
+      I := PosEx('"name":"', LatestReleaseAssetsJSON, StartPos);
+      if I > 0 then
       begin
-        AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
-        if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
+        I := I + Length('"name":"');
+        J := FindNextQuote(LatestReleaseAssetsJSON, I);
+        if J > 0 then
         begin
-          I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
-          if I > 0 then
+          AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
+          if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
           begin
-            I := I + Length('"browser_download_url":"');
-            J := FindNextQuote(LatestReleaseAssetsJSON, I);
-            if J > 0 then
+            I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
+            if I > 0 then
             begin
-              BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
-              AssetURLs.Add(BrowserDownloadURL);
-            end;
+              I := I + Length('"browser_download_url":"');
+              J := FindNextQuote(LatestReleaseAssetsJSON, I);
+              if J > 0 then
+              begin
+                BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
+                AssetURLs.Add(BrowserDownloadURL);
+              end
+              else
+                Log('Failed to find closing quote for browser download URL');
+            end
+            else
+              Log('Failed to find browser download URL for asset: ' + AssetName);
           end;
-        end;
-        StartPos := J + 1;
+          StartPos := J + 1;
+        end
+        else
+          Log('Failed to find closing quote for asset name');
+      end
+      else
+        Break;
+    end;
+
+    if AssetURLs.Count > 0 then
+    begin
+      for I := 0 to AssetURLs.Count - 1 do
+      begin
+        if I > 0 then
+          Result := Result + #13#10; 
+        Result := Result + AssetURLs[I];
       end;
     end
     else
-      Break;
-  end;
+      Log('No assets found for resolution: ' + Resolution);
 
-  if AssetURLs.Count > 0 then
-  begin
-    for I := 0 to AssetURLs.Count - 1 do
-    begin
-      if I > 0 then
-        Result := Result + #13#10; 
-      Result := Result + AssetURLs[I];
-    end;
+  finally
+    AssetURLs.Free;
   end;
-
-  AssetURLs.Free;
 end;
 
 function LatestReleaseHasFiles(Repo: string): Boolean;
@@ -893,7 +911,7 @@ end;
 function ExtractResolution(AssetName: String): String;
 // Extracts resolution information from asset names.
 var
-  UnderscorePos, DashPos, DotPos, DelimiterPos: Integer;
+  UnderscorePos, DashPos, DotPos, DelimiterPos, NoModelsPos: Integer;
   Resolution: String;
   ContainsDigit: Boolean;
   I: Integer;
@@ -946,6 +964,17 @@ begin
   // Append "k" to numeric resolutions if not present and not containing "NoModels"
   if (Resolution <> '') and (Resolution[Length(Resolution)] <> 'k') and ContainsDigit then
     Resolution := Resolution + 'k';
+		
+  // Handle NoModels case
+  NoModelsPos := Pos('NoModels', AssetName);
+  if NoModelsPos > 0 then
+  begin
+    // Include the 4 characters before NoModels
+    if NoModelsPos > 4 then
+      Resolution := Copy(AssetName, NoModelsPos - 4, 4) + ' NoModels'
+    else
+      Resolution := 'NoModels';
+  end;
 
   // Return the extracted resolution
   Result := Resolution;
@@ -1237,7 +1266,7 @@ begin
   if not RP1Checkbox.Checked then
   begin
     Log('RP-1 confirmation not checked');
-    MsgBox('Please confirm that you have installed and launched RP-1 at least once. RSS Reborn will not work if RP-1 does not work.', mbError, MB_OK);
+    MsgBox('Please confirm that you have installed and launched RP-1 at least once, and confirm your GameData is backed up. RSS Reborn will not work if RP-1 does not work.', mbError, MB_OK);
     Result := False; 
   end
   else
@@ -1280,7 +1309,7 @@ begin
   RP1Checkbox.Top := ScaleY(175);
   RP1Checkbox.Width := WizardForm.ClientWidth - ScaleX(36);
   RP1Checkbox.Height := ScaleY(40);
-  RP1Checkbox.Caption := 'I confirm that I have successfully run RP-1 once.';
+  RP1Checkbox.Caption := 'I have run RP-1 once and have backed up my GameData.';
   RP1Checkbox.Checked := False;
 	Log('========================================================');
   Log('RP-1 installation confirmation checkbox created');
@@ -1299,7 +1328,7 @@ begin
   // KSP directory input page
   KSPDirPage := CreateInputDirPage(wpWelcome, 'KSP Directory', 'Select the KSP directory', 'Please select the directory where Kerbal Space Program is installed.', False, '');
   KSPDirPage.Add('');
-  KSPDirPage.Values[0] := 'C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program\GameData';  // Set the default directory
+  KSPDirPage.Values[0] := 'C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program'; 
 
 	// Resolution input page
   Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
@@ -1399,31 +1428,42 @@ begin
 	Log('========================================================');
 end;
 
+procedure SetKSPDir;
+// Sets KSP_DIR based on user input
+begin
+  KSP_DIR := KSPDirPage.Values[0];
+  if KSP_DIR = '' then
+  begin
+    Log('Error: KSP directory is empty.');
+    MsgBox('Failed to set the KSP directory. Please select a valid directory.', mbError, MB_OK);
+    WizardForm.Close;
+    Exit;
+  end;
+  Log('KSP directory set to: ' + KSP_DIR);
+end;
+
 function GetRepoDownloadURLs(Repo, Resolution: string): TStringList;
-// Extracts unique direct download url for an asset
 var
   AssetName, BrowserDownloadURL: string;
   I, J, StartPos: Integer;
   ReleaseJSON, AssetsJSON: string;
 begin
   Result := TStringList.Create;
-  Log('Attempting to retrieve cached data for repository: ' + Repo + ' with resolution: ' + Resolution);
+  Log('Attempting to retrieve cached data for repository: ' + Repo);
 
   if GetCachedJSONForRepo(Repo, Resolution, ReleaseJSON, AssetsJSON) then
   begin
     LatestReleaseAssetsJSON := AssetsJSON;
     LatestReleaseJSON := ReleaseJSON;
-    Log('Using cached release info for ' + Repo + ' with resolution: ' + Resolution);
+    Log('Using cached release info for ' + Repo);
   end
   else
   begin
-    Log('No cached data found for ' + Repo + ' with resolution: ' + Resolution + '. Fetching latest release info.');
+    Log('No cached data found for ' + Repo + '. Fetching latest release info.');
     GetLatestReleaseHTTPInfo(Repo);
     LatestReleaseAssetsJSON := LatestReleaseAssetsJSON;
     LatestReleaseJSON := LatestReleaseJSON;
-    // Cache the resolution-specific data
-    CachedReleaseInfo.Add(Repo + ':' + Resolution + '=' + LatestReleaseJSON + '|' + LatestReleaseAssetsJSON);
-    Log('Fetched latest release info for ' + Repo + ' with resolution: ' + Resolution);
+    Log('Fetched latest release info for ' + Repo);
   end;
 
   StartPos := 1;
@@ -1437,14 +1477,7 @@ begin
       if J > 0 then
       begin
         AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
-        Log('Found asset in GetRepoDownloadURLs: ' + AssetName);
-        // Skip "NoModels" assets unless explicitly selected
-        if (Pos('NoModels', AssetName) > 0) and (Resolution <> 'NoModels') then
-        begin
-          Log('Skipping NoModels asset: ' + AssetName);
-          StartPos := J + 1;
-          Continue;
-        end;
+        Log('Found asset: ' + AssetName);
         if (Resolution = '') or (Pos(Resolution, AssetName) > 0) then
         begin
           I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
@@ -1455,15 +1488,8 @@ begin
             if J > 0 then
             begin
               BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
-              if Result.IndexOf(BrowserDownloadURL) = -1 then
-              begin
-                Result.Add(BrowserDownloadURL);
-                Log('Added download URL in GetRepoDownloadURLs: ' + BrowserDownloadURL);
-              end
-              else
-              begin
-                Log('Skipped duplicate URL in GetRepoDownloadURLs: ' + BrowserDownloadURL);
-              end;
+              Result.Add(BrowserDownloadURL);
+              Log('Added download URL: ' + BrowserDownloadURL);
             end;
           end;
         end;
@@ -1474,14 +1500,14 @@ begin
       Break;
   end;
 
-  Log('Completed retrieving download URLs for repository: ' + Repo + ' with resolution: ' + Resolution);
+  Log('Completed retrieving download URLs for repository: ' + Repo);
 end;
 
 procedure AddToDownloadList(RepoName, Resolution, DestFilePath: string);
 // Adds a unique direct download link to a list to be executed
 var
   DownloadURLs: TStringList;
-  BrowserDownloadURL: string;
+  BrowserDownloadURL, AssetName: string;
   I, J: Integer;
   URLExists: Boolean;
   ReleaseJSON, AssetsJSON: string;
@@ -1553,30 +1579,35 @@ begin
   Log('InitializeDownloadList called');
 
   // RSS-Terrain
-  AddToDownloadList('RSS-Reborn/RSS-Terrain', '', ExpandConstant('{tmp}\RSS_Terrain.7z'));
+  AddToDownloadList('RSS-Reborn/RSS-Terrain', '', (DownloadsDir + '\RSS_Terrain.7z'));
 
   // RSS-Configs
-  AddToDownloadList('RSS-Reborn/RSS-Configs', '', ExpandConstant('{tmp}\RSS_Configs.7z'));
+  AddToDownloadList('RSS-Reborn/RSS-Configs', '', (DownloadsDir + '\RSS_Configs.7z'));
 
-  // Planetary textures at user-selected resolutions
-  for I := 0 to High(BodyRepos) do
-  begin
-    Resolution := ResolutionCombos[I].Text;
-		Log('========================================================');
-		Log('Adding to download list: ' + BodyRepos[I] + ' with resolution: ' + Resolution);
-    AddToDownloadList(BodyRepos[I], Resolution, ExpandConstant('{tmp}\') + ExtractBodyName(BodyRepos[I]) + '_' + Resolution + '.7z');
-  end;
+	// Planetary textures at user-selected resolutions
+	for I := 0 to High(BodyRepos) do
+	begin
+		if (ResolutionCombos[I] <> nil) and (ResolutionCombos[I].ItemIndex >= 0) then
+		begin
+			Resolution := ResolutionCombos[I].Text;
+			AddToDownloadList(BodyRepos[I], Resolution, (DownloadsDir + '\' + ExtractBodyName(BodyRepos[I]) + '_' + Resolution + '.7z'));
+		end
+		else
+		begin
+			Log('ResolutionCombos[' + IntToStr(I) + '] is not initialized or has no selected item.');
+		end;
+	end;
 
   // RSSVE-Configs 
-  AddToDownloadList('RSS-Reborn/RSSVE-Configs', '', ExpandConstant('{tmp}\RSSVE_Configs.7z'));
+  AddToDownloadList('RSS-Reborn/RSSVE-Configs', '', (DownloadsDir + '\RSSVE_Configs.7z'));
 
   // RSSVE-Textures
-  AddToDownloadList('RSS-Reborn/RSSVE-Textures', '', ExpandConstant('{tmp}\RSSVE_Textures.7z'));
+  AddToDownloadList('RSS-Reborn/RSSVE-Textures', '', (DownloadsDir + '\RSSVE_Textures.7z'));
 
   // Scatterer (if not using Blackrack's)
 	if not EVEAndScattererCheckbox.Checked then
   begin
-    AddToDownloadList('LGhassen/Scatterer', '', ExpandConstant('{tmp}\Scatterer.zip'));
+    AddToDownloadList('LGhassen/Scatterer', '', (DownloadsDir + '\Scatterer.zip'));
   end
   else
   begin
@@ -1586,7 +1617,7 @@ begin
   // EVE (if not using Blackrack's)
   if not EVEAndScattererCheckbox.Checked then
   begin
-    AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', ExpandConstant('{tmp}\EVE.zip'));
+    AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', (DownloadsDir + '\EVE.zip'));
   end
   else
   begin
@@ -1596,7 +1627,7 @@ begin
   // Download Parallax
 		ParallaxVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
     ParallaxURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + ParallaxVersion + '/Parallax-' + ParallaxVersion + '.zip';
-    AddToDownloadList('Gameslinx/Tessellation', '', ExpandConstant('{tmp}\Parallax-' + ParallaxVersion + '.zip'));
+    AddToDownloadList('Gameslinx/Tessellation', '', (DownloadsDir + '\Parallax-' + ParallaxVersion + '.zip'));
 end;
 
 procedure CopyFileAndDelete(const SourceFile, DestFile: string);
@@ -1644,13 +1675,11 @@ begin
 end;
 
 procedure MoveDirectory(const SourceDir, DestDir: string);
-// Uses robocopy to move a directory
 var
   ResultCode: Integer;
   MoveCommand: string;
 begin
   // Ensure the destination directory exists
-  //Log('Ensuring destination directory exists: ' + DestDir);
   if not DirectoryExists(DestDir) then
   begin
     if not CreateDir(DestDir) then
@@ -1659,20 +1688,144 @@ begin
       Exit;
     end;
   end;
-  //Log('Successfully ensured destination directory exists: ' + DestDir);
 
-  // Move the directory using robocopy
-  //Log('Executing robocopy move command from ' + SourceDir + ' to ' + DestDir);
-  MoveCommand := 'robocopy "' + SourceDir + '" "' + DestDir + '" /MOVE /E /MT:16';
+  // Use robocopy to move the directory and its contents
+  MoveCommand := Format('robocopy "%s" "%s" /MOVE /E /MT:16 /R:2 /W:5 /COPY:DAT', [SourceDir, DestDir]);
   if Exec('cmd.exe', '/C ' + MoveCommand, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     if ResultCode < 8 then
-      //Log('Successfully moved directory: ' + SourceDir + ' to ' + DestDir)
+    begin
+      Log('Successfully moved directory: ' + SourceDir + ' to ' + DestDir);
+    end
     else
+    begin
       Log('Failed to move directory: ' + SourceDir + ' to ' + DestDir + ' with error code: ' + IntToStr(ResultCode));
+      MsgBox('Failed to move directory: ' + SourceDir + ' to ' + DestDir + ' with error code: ' + IntToStr(ResultCode), mbError, MB_OK);
+    end;
   end
   else
+  begin
     Log('Failed to execute move command for directory: ' + SourceDir + ' to ' + DestDir);
+    MsgBox('Failed to execute move command for directory: ' + SourceDir + ' to ' + DestDir, mbError, MB_OK);
+  end;
+end;
+
+procedure MoveRaymarchedVolumetrics;
+// Moves only the specific directories from RaymarchedVolumetrics to GameDataMerged
+var
+  SourceDir, DestDir: string;
+begin
+  SourceDir := (DownloadsDir + '\RaymarchedVolumetrics\GameData');
+  DestDir := (DownloadsDir + '\GameDataMerged\GameData');
+
+  // Ensure the destination directory exists
+  if not DirExists(DestDir) then
+  begin
+    Log('GameData directory does not exist in GameDataMerged. Creating: ' + DestDir);
+    if not CreateDir(DestDir) then
+    begin
+      Log('Failed to create GameData directory in GameDataMerged: ' + DestDir);
+      MsgBox('Failed to create GameData directory in GameDataMerged: ' + DestDir, mbError, MB_OK);
+      RaiseException('Failed to create GameData directory in GameDataMerged: ' + DestDir);
+      Exit;
+    end
+    else
+    begin
+      Log('Successfully created GameData directory in GameDataMerged: ' + DestDir);
+    end;
+  end;
+
+  // Move EnvironmentalVisualEnhancements directory
+  if DirExists(SourceDir + '\EnvironmentalVisualEnhancements') then
+  begin
+    Log('Moving EnvironmentalVisualEnhancements from ' + SourceDir + ' to ' + DestDir);
+    MoveDirectory(SourceDir + '\EnvironmentalVisualEnhancements', DestDir + '\EnvironmentalVisualEnhancements');
+  end;
+
+  // Move Scatterer directory
+  if DirExists(SourceDir + '\Scatterer') then
+  begin
+    Log('Moving Scatterer from ' + SourceDir + ' to ' + DestDir);
+    MoveDirectory(SourceDir + '\Scatterer', DestDir + '\Scatterer');
+  end;
+
+  Log('RaymarchedVolumetrics specific directories moved successfully.');
+end;
+
+procedure MoveParallaxDirectories;
+var
+  SourceDir, DestDir: string;
+begin
+  Log('Moving Parallax and Parallax_StockTextures to GameData directory.');
+  
+  // Define the source and destination directories
+  SourceDir := (DownloadsDir + '\GameDataMerged');
+  DestDir := SourceDir + '\GameData';
+
+  // Move Parallax directory
+  if DirExists(SourceDir + '\Parallax') then
+  begin
+    Log('Moving directory: ' + SourceDir + '\Parallax to ' + DestDir);
+    MoveDirectory(SourceDir + '\Parallax', DestDir + '\Parallax');
+  end;
+
+  // Move Parallax_StockTextures directory
+  if DirExists(SourceDir + '\Parallax_StockTextures') then
+  begin
+    Log('Moving directory: ' + SourceDir + '\Parallax_StockTextures to ' + DestDir);
+    MoveDirectory(SourceDir + '\Parallax_StockTextures', DestDir + '\Parallax_StockTextures');
+  end;
+  
+  Log('Successfully moved Parallax and Parallax_StockTextures directories.');
+end;
+
+procedure MoveScattererGameData;
+var
+  SourceDir, DestDir, ScattererSourceDir, FindRecName: string;
+  FindRec: TFindRec;
+begin
+  Log('Moving Scatterer to GameData directory.');
+  
+  // Define the source and destination directories
+  DestDir := DownloadsDir + '\GameDataMerged\GameData';
+
+  // Ensure the destination directory exists
+  if not DirExists(DestDir) then
+  begin
+    if not CreateDir(DestDir) then
+    begin
+      Log('Failed to create destination directory: ' + DestDir);
+      Exit;
+    end;
+  end;
+
+  // Search for directories starting with "scatterer" in DownloadsDir
+  if FindFirst(DownloadsDir + '\scatterer*', FindRec) then
+  begin
+    try
+      repeat
+        FindRecName := FindRec.Name;
+        ScattererSourceDir := DownloadsDir + '\' + FindRecName + '\GameData\Scatterer';
+        if DirExists(ScattererSourceDir) then
+        begin
+          Log('Moving directory: ' + ScattererSourceDir + ' to ' + DestDir + '\Scatterer');
+          MoveDirectory(ScattererSourceDir, DestDir + '\Scatterer');
+        end
+        else
+        begin
+          Log('Scatterer directory not found in ' + ScattererSourceDir);
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end
+  else
+  begin
+    Log('No scatterer directories found in ' + DownloadsDir);
+  end;
+
+  Log('Successfully moved Scatterer directories.');
 end;
 
 procedure MergeGameDataFolders;
@@ -1683,7 +1836,6 @@ var
   ProgressCounter: Integer;
 begin
   // Define the source and destination directories
-  DownloadsDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
   GameDataMerged := DownloadsDir + '\GameDataMerged';
   
   // Ensure the GameDataMerged directory exists
@@ -1713,18 +1865,25 @@ begin
         SourceDir := DownloadsDir + '\' + FindRec.Name;
         GameDataDir := SourceDir;
 
-        // Skip if it's not a directory or if it's the GameDataMerged directory itself
+        // Skip if it's not a directory, if it's the GameDataMerged directory itself,
+        // if it's RaymarchedVolumetrics, or if the directory name starts with "scatterer"
         if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) and
            (FindRec.Name <> '.') and (FindRec.Name <> '..') and
-           (SourceDir <> GameDataMerged) then
+           (SourceDir <> GameDataMerged) and
+           (FindRec.Name <> 'RaymarchedVolumetrics') and
+           (Pos('scatterer', LowerCase(FindRec.Name)) <> 1) then
         begin
           Log('Moving contents of GameData directory: ' + GameDataDir + ' to ' + GameDataMerged);
           MoveDirectory(GameDataDir, GameDataMerged);
+        end
+        else
+        begin
+          Log('Skipping directory: ' + FindRec.Name);
         end;
         
         // Update progress
         Inc(ProgressCounter);
-        CurrentFileLabelM.Caption := 'Merging: ' + SourceDir;
+        CurrentFileLabelM.Caption := 'Merging: ' + GameDataDir;
         MergePage.SetProgress(ProgressCounter, 50);
         WizardForm.Update;
                 
@@ -1734,69 +1893,32 @@ begin
     end;
   end;
 	
-	// Do not want StockScatterConfigs and StockVolumetricConfigs
-	DeleteDirectory(GameDataMerged + '\StockScatterConfigs');
-	DeleteDirectory(GameDataMerged + '\StockVolumetricConfigs');
+	Inc(ProgressCounter);
+	MoveParallaxDirectories;
+	CurrentFileLabelM.Caption := 'Merging: Parallax';
+  MergePage.SetProgress(ProgressCounter, 50);
+	WizardForm.Update;
+	
+	if EVEAndScattererCheckbox.Checked then
+	begin
+	  Inc(ProgressCounter);
+		MoveRaymarchedVolumetrics;
+		CurrentFileLabelM.Caption := 'Merging: Raymarched Volumetrics';
+		MergePage.SetProgress(ProgressCounter, 50);
+		WizardForm.Update;
+	end
+	else
+	begin
+	  Inc(ProgressCounter);
+		MoveScattererGameData;
+		CurrentFileLabelM.Caption := 'Merging: Scatterer';
+		MergePage.SetProgress(ProgressCounter, 50);
+		WizardForm.Update;
+	end;
 
   MergePage.SetProgress(50, 50);
   WizardForm.Update;
   MergePage.SetProgress(DownloadList.Count, DownloadList.Count);
-end;
-
-procedure RemoveObsoleteFolders;
-// Deletes old or obsolete directories from the game installation.
-// Prevents conflicts and ensures only relevant files remain.
-begin
-  Log('Removing obsolete folders');
-  if DirectoryExists(KSP_DIR + '\Kopernicus') then
-    if not DelTree(KSP_DIR + '\Kopernicus', True, True, True) then
-      Log('Failed to delete Kopernicus directory.')
-    else
-      Log('Kopernicus directory deleted.')
-  else
-    Log('Kopernicus directory does not exist.');
-
-  if DirectoryExists(KSP_DIR + '\Parallax') then
-    if not DelTree(KSP_DIR + '\Parallax', True, True, True) then
-      Log('Failed to delete Parallax directory.')
-    else
-      Log('Parallax directory deleted.')
-  else
-    Log('Parallax directory does not exist.');
-
-  if DirectoryExists(KSP_DIR + '\Parallax_StockTextures') then
-    if not DelTree(KSP_DIR + '\Parallax_StockTextures', True, True, True) then
-      Log('Failed to delete Parallax_StockTextures directory.')
-    else
-      Log('Parallax_StockTextures directory deleted.')
-  else
-    Log('Parallax_StockTextures directory does not exist.');
-
-  if DirectoryExists(KSP_DIR + '\RSS-Textures') then
-    if not DelTree(KSP_DIR + '\RSS-Textures', True, True, True) then
-      Log('Failed to delete RSS-Textures directory.')
-    else
-      Log('RSS-Textures directory deleted.')
-  else
-    Log('RSS-Textures directory does not exist.');
-
-  if DirectoryExists(KSP_DIR + '\RSSVE') then
-    if not DelTree(KSP_DIR + '\RSSVE', True, True, True) then
-      Log('Failed to delete RSSVE directory.')
-    else
-      Log('RSSVE directory deleted.')
-  else
-    Log('RSSVE directory does not exist.');
-
-  if DirectoryExists(KSP_DIR + '\RealSolarSystem') then
-    if not DelTree(KSP_DIR + '\RealSolarSystem', True, True, True) then
-      Log('Failed to delete RealSolarSystem directory.')
-    else
-      Log('RealSolarSystem directory deleted.')
-  else
-    Log('RealSolarSystem directory does not exist.');
-
-  Log('Folders removal completed.');
 end;
 
 procedure MoveEVEAndScatterer;
@@ -1808,7 +1930,7 @@ begin
   if EVEAndScattererCheckbox.Checked then
   begin
     SourceDir := ExpandConstant('{userdesktop}'); 
-    DestDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
+    DestDir := DownloadsDir;
 
     // Move EVE and Scatterer zip files
     SearchPattern := 'RaymarchedVolumetrics*.zip';
@@ -2032,18 +2154,114 @@ begin
   end;
 end;
 
+procedure RemoveObsoleteFolders;
+// Deletes old or obsolete directories from the game installation.
+// Prevents conflicts and ensures only relevant files remain.
+begin
+  Log('Removing obsolete folders');
+  if DirectoryExists(KSP_DIR + '\GameData\Kopernicus') then
+    if not DelTree(KSP_DIR + '\GameData\Kopernicus', True, True, True) then
+      Log('Failed to delete Kopernicus directory.')
+    else
+      Log('Kopernicus directory deleted.')
+  else
+    Log('Kopernicus directory does not exist.');
+
+  if DirectoryExists(KSP_DIR + '\GameData\Parallax') then
+    if not DelTree(KSP_DIR + '\GameData\Parallax', True, True, True) then
+      Log('Failed to delete Parallax directory.')
+    else
+      Log('Parallax directory deleted.')
+  else
+    Log('Parallax directory does not exist.');
+
+  if DirectoryExists(KSP_DIR + '\GameData\Parallax_StockTextures') then
+    if not DelTree(KSP_DIR + '\GameData\Parallax_StockTextures', True, True, True) then
+      Log('Failed to delete Parallax_StockTextures directory.')
+    else
+      Log('Parallax_StockTextures directory deleted.')
+  else
+    Log('Parallax_StockTextures directory does not exist.');
+
+  if DirectoryExists(KSP_DIR + '\GameData\RSS-Textures') then
+    if not DelTree(KSP_DIR + '\GameData\RSS-Textures', True, True, True) then
+      Log('Failed to delete RSS-Textures directory.')
+    else
+      Log('RSS-Textures directory deleted.')
+  else
+    Log('RSS-Textures directory does not exist.');
+
+  if DirectoryExists(KSP_DIR + '\GameData\RSSVE') then
+    if not DelTree(KSP_DIR + '\GameData\RSSVE', True, True, True) then
+      Log('Failed to delete RSSVE directory.')
+    else
+      Log('RSSVE directory deleted.')
+  else
+    Log('RSSVE directory does not exist.');
+
+  if DirectoryExists(KSP_DIR + '\GameData\RealSolarSystem') then
+    if not DelTree(KSP_DIR + '\GameData\RealSolarSystem', True, True, True) then
+      Log('Failed to delete RealSolarSystem directory.')
+    else
+      Log('RealSolarSystem directory deleted.')
+  else
+    Log('RealSolarSystem directory does not exist.');
+		
+  if DirectoryExists(KSP_DIR + '\GameData\EnvironmentalVisualEnhancements') then
+    if not DelTree(KSP_DIR + '\GameData\EnvironmentalVisualEnhancements', True, True, True) then
+      Log('Failed to delete EnvironmentalVisualEnhancements directory.')
+    else
+      Log('EnvironmentalVisualEnhancements directory deleted.')
+  else
+    Log('EnvironmentalVisualEnhancements directory does not exist.');
+		
+  if DirectoryExists(KSP_DIR + '\GameData\RSS-Configs') then
+    if not DelTree(KSP_DIR + '\GameData\RSS-Configs', True, True, True) then
+      Log('Failed to delete RSS-Configs directory.')
+    else
+      Log('RSS-Configs directory deleted.')
+  else
+    Log('RSS-Configs directory does not exist.');
+		
+  if DirectoryExists(KSP_DIR + '\GameData\RSS-Terrain') then
+    if not DelTree(KSP_DIR + '\GameData\RSS-Terrain', True, True, True) then
+      Log('Failed to delete RSS-Terrain directory.')
+    else
+      Log('RSS-Terrain directory deleted.')
+  else
+    Log('RSS-Terrain directory does not exist.');
+		
+  if DirectoryExists(KSP_DIR + '\GameData\RSSVE-Configs') then
+    if not DelTree(KSP_DIR + '\GameData\RSSVE-Configs', True, True, True) then
+      Log('Failed to delete RSSVE-Configs directory.')
+    else
+      Log('RSSVE-Configs directory deleted.')
+  else
+    Log('RSSVE-Configs directory does not exist.');
+		
+  if DirectoryExists(KSP_DIR + '\GameData\RSSVE-Textures') then
+    if not DelTree(KSP_DIR + '\GameData\RSSVE-Textures', True, True, True) then
+      Log('Failed to delete RSSVE-Textures directory.')
+    else
+      Log('RSSVE-Textures directory deleted.')
+  else
+    Log('RSSVE-Textures directory does not exist.');
+		
+  if DirectoryExists(KSP_DIR + '\GameData\Scatterer') then
+    if not DelTree(KSP_DIR + '\GameData\Scatterer', True, True, True) then
+      Log('Failed to delete Scatterer directory.')
+    else
+      Log('Scatterer directory deleted.')
+  else
+    Log('Scatterer directory does not exist.');
+
+  Log('Folders removal completed.');
+end;
+
 procedure StartInstallation;
 // Ensures RP-1 checkbox was checked by user before removing folders
 begin
-  Log('Starting RSS Reborn installation process.');
-  InitializeDownloadsDir;
-  if not RP1Checkbox.Checked then
-  begin
-    Log('RP-1 installation confirmation failed. Aborting installation.');
-    MsgBox('You must have RP-1 installed and launched at least once before proceeding.', mbError, MB_OK);
-    WizardForm.Close;
-    Exit;
-  end;
+  Log('Starting RSS Reborn installation process by clearing old folders.');
   RemoveObsoleteFolders;
 end;
 
@@ -2061,17 +2279,6 @@ begin
       Result := False; // Prevent navigation if RP-1 confirmation is not checked
       Exit;
     end;
-
-    // Validate and set the KSP directory from the input page
-    KSP_DIR := KSPDirPage.Values[0];
-    if KSP_DIR = '' then
-    begin
-      Log('Error: KSP directory is empty.');
-      MsgBox('Failed to set the KSP directory. Please select a valid directory.', mbError, MB_OK);
-      Result := False;
-      Exit;
-    end;
-    Log('KSP directory set to: ' + KSP_DIR);
   
     if NoAssetsFound then
     begin
@@ -2119,6 +2326,90 @@ begin
   end;
   DownloadPage.SetProgress(DownloadList.Count, DownloadList.Count);
 end;
+
+procedure MoveGameDataToKSPDir;
+// Final move to KSP installation 
+var
+  SourceDir, DestDir: string;
+begin
+  // Define the source and destination directories
+  SourceDir := (DownloadsDir + '\GameDataMerged\GameData');
+  DestDir := KSP_DIR + '\GameData';
+  
+  // Log the action
+  Log('Moving GameData from ' + SourceDir + ' to ' + DestDir);
+  
+  // Perform the copy and log any errors
+	try
+	  MoveDirectory(SourceDir, DestDir);
+	  Log('Successfully moved GameData to ' + DestDir);
+	except
+	  Log('Failed to move GameData to ' + DestDir);
+    MsgBox('Failed to move GameData to ' + DestDir + '. Please check the logs for details.', mbError, MB_OK);
+	Exit;
+	end;
+end;
+
+//To be added
+//procedure BackupGameDataFolder;
+//
+//var
+//  GameDataPath, BackupPath, PowerShellPath, CommandLine: string;
+//  ResultCode: Integer;
+//begin
+//  GameDataPath := KSP_DIR + '\GameData';
+//  BackupPath := ExpandConstant('{userdesktop}') + '\GameDataBackup.zip';
+//
+//  // Check if PowerShell is available
+//  if FileExists('C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe') then
+//    PowerShellPath := 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+//  else
+//  begin
+//    Log('PowerShell executable not found!');
+//    MsgBox('PowerShell executable not found! Please ensure PowerShell is available.', mbError, MB_OK);
+//    Exit;
+//  end;
+//
+//  // Build the command line for PowerShell to create the zip file
+//  CommandLine := Format('-Command "Compress-Archive -Path ''%s\*'' -DestinationPath ''%s'' -Force"', [GameDataPath, BackupPath]);
+//
+//  // Log the paths for verification
+//  Log('GameDataPath: ' + GameDataPath);
+//  Log('BackupPath: ' + BackupPath);
+//
+//  // Log the command line
+//  Log('Executing command: "' + PowerShellPath + '" ' + CommandLine);
+//
+//  // Execute the command
+//  if Exec(PowerShellPath, CommandLine, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+//  begin
+//    if ResultCode = 0 then
+//    begin
+//      Log('GameData folder successfully backed up.');
+//    end
+//    else
+//    begin
+//      Log('Error compressing GameData folder. Backup failed. Error code: ' + IntToStr(ResultCode));
+//      MsgBox('Error compressing GameData folder. Backup failed. Error code: ' + IntToStr(ResultCode), mbError, mb_OK);
+//    end;
+//  end
+//  else
+//  begin
+//    Log('Error starting PowerShell process for backup. Backup failed.');
+//    MsgBox('Error starting PowerShell process for backup. Backup failed.', mbError, mb_OK);
+//  end;
+//
+//  // Verify if the backup file exists and log the result
+//  if FileExists(BackupPath) then
+//  begin
+//    Log('Backup file created successfully: ' + BackupPath);
+//  end
+//  else
+//  begin
+//    Log('Backup file not found: ' + BackupPath);
+//    MsgBox('Backup file not found: ' + BackupPath, mbError, MB_OK);
+//  end;
+//end;
 
 function InitializeDownloads: Boolean;
 // Helper function to call proc, returns error if it cannot execute 
@@ -2178,6 +2469,11 @@ begin
 	  Log('========================================================');
     Log('Install step reached. Starting installation process.');
     DownloadPage.Show;
+		
+		// Set KSP directory based on user input, and immediately back it up in case of failure
+		SetKSPDir;
+		//BackupGameDataFolder;
+		
     try
       // Call modular functions to perform tasks
 			begin
@@ -2192,6 +2488,7 @@ begin
 					Log('CurStepChanged');
 				end;
 			end;
+			StartInstallation;
 			DownloadAllFiles;
 		finally
 			OnDownloadComplete;
@@ -2220,6 +2517,7 @@ begin
         Exit;
       end;
 		finally;
+		  MoveGameDataToKSPDir;
 			MergePage.hide;
 		end;
 
