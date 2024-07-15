@@ -11,7 +11,7 @@
 ; ...but it works
 
 #define MyAppName "RSS Reborn Installer"
-#define MyAppVersion "0.5"
+#define MyAppVersion "1.0"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "https://github.com/RSS-Reborn/RSS-Reborn"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
@@ -1517,6 +1517,14 @@ begin
     for I := 0 to DownloadURLs.Count - 1 do
     begin
       URLExists := False;
+
+      // Skip URLs containing "parallax_stocktextures"
+      if Pos('parallax_stocktextures', DownloadURLs[I]) > 0 then
+      begin
+        Log('Skipped URL containing parallax_stocktextures: ' + DownloadURLs[I]);
+        Continue;
+      end;
+
       for J := 0 to DownloadList.Count - 1 do
       begin
         if Pos(DownloadURLs[I], DownloadList[J]) > 0 then
@@ -1549,7 +1557,10 @@ var
 begin
   Log('InitializeDownloadList called');
 
-  // RSS-Terrain
+  // Kopernicus
+  AddToDownloadList('ballisticfox/Kopernicus', '', (DownloadsDir + '\Kopernicus.7z'));
+	
+	// RSS-Terrain
   AddToDownloadList('RSS-Reborn/RSS-Terrain', '', (DownloadsDir + '\RSS_Terrain.7z'));
 
   // RSS-Configs
@@ -2046,9 +2057,9 @@ begin
   AllFilesDownloaded := True;
   
   // We don't want stock textures, duh
-  if DirectoryExists(DownloadsDir + '\Parallax_StockTextures' + ParallaxVersion) then
+  if DirectoryExists(DownloadsDir + '\Parallax_StockTextures-' + ParallaxVersion) then
   begin
-    if not DelTree(DownloadsDir + '\Parallax_StockTextures' + ParallaxVersion, True, True, True) then
+    if not DelTree(DownloadsDir + '\Parallax_StockTextures-' + ParallaxVersion, True, True, True) then
       DownloadLogs.Add('Failed to delete Parallax_StockTextures directory.')
     else
       DownloadLogs.Add('Parallax_StockTextures directory deleted.')
