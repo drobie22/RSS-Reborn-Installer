@@ -11,7 +11,7 @@
 ; ...but it works
 
 #define MyAppName "RSS Reborn Installer"
-#define MyAppVersion "1.0"
+#define MyAppVersion "1.0.0"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "https://github.com/RSS-Reborn/RSS-Reborn"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
