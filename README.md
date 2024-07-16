@@ -82,7 +82,7 @@ Big thank you to Ballisticfox, Techo, and VaNnadin for creating and maintaining 
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](https://github.com/drobie22/RSS-Reborn-Installer/blob/main/Licenses/LICENSE) file for details.
 
 ## Setting Up a GitHub Environment Variable
 
