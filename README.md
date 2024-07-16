@@ -79,6 +79,7 @@ Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues
 ## Credits
 
 Big thank you to Ballisticfox, Techo, and VaNnadin for creating and maintaining RSS Reborn, and to Blackrack for his amazing Volumetric Clouds!
+Additional thanks to kyrianelson413 for their GitHub expertise and debugging help!
 
 ## License
 
