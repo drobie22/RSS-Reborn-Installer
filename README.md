@@ -63,7 +63,11 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
     - Instructions are at the bottom of this page.
     - Installer will always grab the latest files from GitHub.
 - Help! No resolutions showing for a body! 
-    - Most likely the latest release of that body was empty. Before you start installation, manually download the previous release. 
+    - Most likely the latest release of that body was empty. Before you start installation, manually download the previous release.
+ 
+#### If you encounter a problem not listed:
+
+Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues) with your log (found in the directory: `C:\Users\yourusername\AppData\Local\Temp`, where yourusername is the name of your windows user). The log will look something like `Setup Log 2024-07-15 #001.txt`.
 
 ## Future Updates
 
