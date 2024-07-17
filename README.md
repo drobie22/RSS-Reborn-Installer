@@ -81,10 +81,11 @@ Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues
 ## Credits
 
 Big thank you to Ballisticfox, Techo, and VaNnadin for creating and maintaining RSS Reborn, and to Blackrack for his amazing Volumetric Clouds!
+Additional thanks to kyrianelson413 for their GitHub expertise and debugging help!
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](https://github.com/drobie22/RSS-Reborn-Installer/blob/main/Licenses/LICENSE) file for details.
 
 ## Setting Up a GitHub Environment Variable
 
