@@ -68,7 +68,6 @@ var
   BodySizes: array of string;	
 	BodyVersions: array of string;
 	BodiesWithNoAssets: TStringList;
-	StoreDir: string;
 	StoredReleaseInfo: TStringList;
 	CurrentFileLabel: TNewStaticText;
 	CurrentFileLabelE: TNewStaticText;
@@ -201,20 +200,6 @@ var
 begin
   Result := FindFirst(AddBackslash(Dir) + '*.*', FindRec);
   FindClose(FindRec);
-end;
-
-procedure InitializeDownloadsDir;
-// Sets the directory for downloading files.
-begin
-  DownloadsDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
-  if not DirExists(DownloadsDir) then
-  begin
-    if CreateDir(DownloadsDir) then
-      Log('Created download directory: ' + DownloadsDir)
-    else
-      Log('Failed to create download directory: ' + DownloadsDir);
-  end;
-  Log('Downloads directory initialized: ' + DownloadsDir);
 end;
 
 procedure ClearDownloadDirectory;
@@ -1581,11 +1566,25 @@ begin
   begin
     Log('Warning: Not enough disk space available on drive ' + DriveLetter + '.');
     MsgBox('Warning: Not enough disk space on the selected drive (' + DriveLetter + '). You need at least 50GB of free space.', mbError, MB_OK);
-    KSPDirPage.Values[0] := ''; // Clear the selected directory
+    KSPDirPage.Values[0] := ''; 
     Exit;
   end;
 
   Log('KSP directory set to: ' + KSP_DIR);
+end;
+
+procedure InitializeDownloadsDir;
+// Sets the directory for downloading files.
+begin
+  DownloadsDir := ExpandConstant(KSP_DIR + '\RSSRebornDownloads');
+  if not DirExists(DownloadsDir) then
+  begin
+    if CreateDir(DownloadsDir) then
+      Log('Created download directory: ' + DownloadsDir)
+    else
+      Log('Failed to create download directory: ' + DownloadsDir);
+  end;
+  Log('Downloads directory initialized: ' + DownloadsDir);
 end;
 
 function GetRepoDownloadURLs(Repo, Resolution: string): TStringList;
