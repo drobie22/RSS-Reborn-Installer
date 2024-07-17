@@ -12,9 +12,10 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 
 ## Requirements
 
-- [Kerbal Space Program](https://www.kerbalspaceprogram.com/)
-- [RP-1 RSS/RO Modpack](https://github.com/KSP-RO/RP-0) (must be installed and launched at least once)
-- [7-Zip](https://www.7-zip.org/download.html) (for extracting files)
+- [Kerbal Space Program](https://www.kerbalspaceprogram.com/) Version 1.12.x
+- [Real Solar System Modpack](https://github.com/KSP-RO/RealSolarSystem) (must be installed and launched at least once)
+	- RSS Reborn is a custom fork of RSS. That means RSS Reborn is compatible with RP-1, Realism Overhaul, etc.
+- [7-Zip](https://www.7-zip.org/download.html) or [WinRAR](https://www.win-rar.com/) (for extracting files)
 - 50 GB free storage space
 - (Optional) [Blackrack's Volumetric Clouds](https://www.patreon.com/blackrack) If you wish to include this, you must have his EVE and Scatterer zips downloaded to your downloads folder so the installer can grab them. 
     - This is in place to ensure you have obtained the files through Patreon. 
@@ -35,7 +36,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 
 1. Run the downloaded `RSS-Reborn-Installer.exe`.
 2. Follow the on-screen instructions:
-   - Confirm that you have successfully launched RP-1 at least once.
+   - Confirm that you have successfully launched Real Solar System at least once.
    - Optionally confirm that you have downloaded Blackrack's Raymarched Volumetrics from Patreon.
        - If downloaded, drag zip to desktop so the installer can grab it.
        - Ensure only one folder named "RaymarchedVolumetrics" is on your desktop.
@@ -55,7 +56,7 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
 - ***Parallax Error*** Unable to locate a creitical part of the Parallax Installation: ParallaxTerrain.cfg is missing.
     - Completely normal and unavoidable. You can ignore.
 - ***7-Zip executable not found! Please ensure 7-Zip is installed.***
-    - Ensure that 7-Zip is installed in the default location.
+    - Ensure that 7-Zip or WinRAR is installed in the default location.
 - Check to make sure RP-1 (RSS/RO) can successfully run before using this installer. If that doesnt work, RSS Reborn will obviously not work. 
 - If you load the game but get stuck on an infinite black loading screen with spinning planets, check to see if you have the stock Squad folders in GameData. Otherwise, submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues).
 - GitHub naturally doesn't like programs fetching lots of data at once. Usually this is capped at 60 calls per hour. The installer will run 20-40 requests to GitHub in a run depending on resolutions selected. If you see an error related to GitHub's rate limit, please wait an hour before trying again. 
@@ -73,6 +74,7 @@ Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues
 
 - Support for downloading deferred rendering, user-downloaded and automated installation. 
 - Support for retrieving files from other releases, not just the latest.
+- Support for Scaled models.
 - Support for downloading MTE.
 - Installer can automatically back up your GameData folder and compress it in case of failure.
 

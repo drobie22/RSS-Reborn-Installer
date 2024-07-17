@@ -11,9 +11,9 @@
 ; ...but it works
 
 #define MyAppName "RSS Reborn Installer"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "DRobie22"
-#define MyAppURL "https://github.com/RSS-Reborn/RSS-Reborn"
+#define MyAppURL "drobie22/RSS-Reborn-Installer"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
 
 [Setup]
@@ -41,10 +41,9 @@ PrivilegesRequired=admin
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel2=This will install RSS Reborn into your default KSP directory.%n%nMod created and maintained by Ballisticfox, Techo, and VaNnadin.%n[name/ver] created by DRobie22.
+WelcomeLabel2=This will install RSS Reborn into your KSP directory.%n%nMod created and maintained by Ballisticfox, Techo, and VaNnadin.%n[name/ver] created by DRobie22.
 
 [Files]
-Source: "C:\Program Files\7-Zip\7z.exe"; DestDir: "{tmp}"; Flags: dontcopy;
 Source: "Licenses\license.txt"; DestDir: "{app}"; Flags: dontcopy;
 Source: "Licenses\lgpl-3.0.txt"; DestDir: "{app}"; Flags: dontcopy;
 
@@ -102,11 +101,26 @@ var
   wpSelectResolutions: Integer;
   ReleaseStore: TStringList;
   AssetsStore: TStringList;
-
+  SevenZipPath: string;
+  WinRARPath: string;
+  AppName: String;
+  AppVersion: String;
+  AppPublisher: String;
+  AppURL: String;
+  AppExeName: String;
 	
 type
   TResolutionPages = array of TWizardPage;
   TResolutionCombos = array of TComboBox;
+
+procedure InitializeConstants;
+begin
+  AppName := '{#MyAppName}';
+  AppVersion := '{#MyAppVersion}';
+  AppPublisher := '{#MyAppPublisher}';
+  AppURL := '{#MyAppURL}';
+  AppExeName := '{#MyAppExeName}';
+end;
 
 procedure InitializeVariables;
 // Initializes global variables to their default states.
@@ -153,18 +167,7 @@ begin
   SetLength(SizesList, 12);
 end;
 
-function Is7ZipInstalled: Boolean;
-// Function to assist 7Zip  Init
-begin
-  Result := FileExists('C:\Program Files\7-Zip\7z.exe') or FileExists('C:\Program Files (x86)\7-Zip\7z.exe');
-  if Result then
-    Log('7-Zip is installed.')
-  else
-    Log('7-Zip is not installed.');
-end;
-
 function GetDiskFreeSpaceEx(
-// Uses windows api to check available space
   lpDirectoryName: string;
   var lpFreeBytesAvailableToCaller, lpTotalNumberOfBytes, lpTotalNumberOfFreeBytes: Int64): BOOL;
   external 'GetDiskFreeSpaceExW@kernel32.dll stdcall';
@@ -181,13 +184,13 @@ begin
   end;
 end;
 
-function IsEnoughDiskSpaceAvailable: Boolean;
+function IsEnoughDiskSpaceAvailable(Drive: String): Boolean;
 // Uses windows api to check available space (need 50 GB to be safe)
 var
   FreeSpace: Int64;
 begin
-  FreeSpace := GetFreeSpace(ExpandConstant('{sd}'));
-  Log('Free disk space: ' + IntToStr(FreeSpace div (1024 * 1024 * 1024)) + ' GB');
+  FreeSpace := GetFreeSpace(Drive);
+  Log('Free disk space on ' + Drive + ': ' + IntToStr(FreeSpace div (1024 * 1024 * 1024)) + ' GB');
   Result := FreeSpace >= RequiredSpace;
 end;
 
@@ -247,35 +250,89 @@ begin
   Result := GetEnv('MY_ACCESS_TOKEN');
 end;
 
+function GetDriveList: TStringList;
+// For users who play on a different drive
+var
+  Drives: TStringList;
+  DriveLetter: Char;
+begin
+  Drives := TStringList.Create;
+  DriveLetter := 'A';
+  while Ord(DriveLetter) <= Ord('Z') do
+  begin
+    if DirExists(DriveLetter + ':\') then
+    begin
+      Drives.Add(DriveLetter + ':\');
+    end;
+    DriveLetter := Chr(Ord(DriveLetter) + 1);
+  end;
+  Result := Drives;
+end;
+
+function FindProgram(ProgramFolder, ProgramExe: string): string;
+// Searches for a specified program in a path 
+var
+  Drives: TStringList;
+  I: Integer;
+  ProgramPath: string;
+begin
+  Result := '';
+  Drives := GetDriveList;
+  try
+    for I := 0 to Drives.Count - 1 do
+    begin
+      ProgramPath := Drives[I] + 'Program Files\' + ProgramFolder + '\' + ProgramExe;
+      if FileExists(ProgramPath) then
+      begin
+        Result := ProgramPath;
+        Exit;
+      end;
+      ProgramPath := Drives[I] + 'Program Files (x86)\' + ProgramFolder + '\' + ProgramExe;
+      if FileExists(ProgramPath) then
+      begin
+        Result := ProgramPath;
+        Exit;
+      end;
+    end;
+  finally
+    Drives.Free;
+  end;
+end;
+
 function InitializeSetup: Boolean;
-// Begin the sequence by checking for space and 7 zip
+// Begin the sequence by checking for space and required programs
 begin
   ReleaseStore := TStringList.Create;
   AssetsStore := TStringList.Create;
   Result := True;
-	ClearDownloadDirectory;
-	ReadGitHubAccessTokenOnce;
+  ClearDownloadDirectory;
+  ReadGitHubAccessTokenOnce;
 	
-	StoreDir := ExpandConstant('{localappdata}\YourInstaller\Store\');
-  if not DirExists(StoreDir) then
-    ForceDirectories(StoreDir);
-		
-  if not IsEnoughDiskSpaceAvailable then
-  begin
-    MsgBox('You need at least 50 GB of free disk space to install RSS-Reborn without issues.', mbError, MB_OK);
-    Result := False;
-    Log('Not enough disk space available.');
-  end
-  else if not Is7ZipInstalled then
-  begin
-    MsgBox('7-Zip is not installed. Please install 7-Zip to continue.', mbError, MB_OK);
-    Result := False;
-    Log('7-Zip is not installed.');
-  end
-  else
+	SevenZipPath := FindProgram('7-Zip', '7z.exe');
+	WinRARPath := FindProgram('WinRAR', 'WinRAR.exe');
+
+	if SevenZipPath = '' then
+	begin
+		if WinRARPath = '' then
+		begin
+			MsgBox('Neither 7-Zip nor WinRAR is installed. Please install either 7-Zip or WinRAR to continue.', mbError, MB_OK);
+			Result := False;
+			Log('Neither 7-Zip nor WinRAR is installed.');
+		end
+		else
+		begin
+			Log('WinRAR found at ' + WinRARPath);
+		end;
+	end
+	else
+	begin
+		Log('7-Zip found at ' + SevenZipPath);
+	end;
+
+  if Result then
     Log('Setup initialization successful.');
 end;
-	
+
 procedure DeinitializeVariables;
 // Frees allocated resources. Prevents memory leaks by releasing resources.
 begin
@@ -544,33 +601,20 @@ begin
   Log('BodyRepos array initialized');
 end;
 
-function Extract7Zip(ArchivePath, DestDir: string): Boolean;
-// Main call to user's 7 zip exe
+function ExtractProgram(ArchivePath, DestDir: string): Boolean;
+//Uses 7 zip or winrar to extract a compressed file 
 var
-  ZipPath: string;
   ResultCode: Integer;
   CommandLine: string;
   IsMultiVolume: Boolean;
   FirstPartArchivePath: string;
 begin
-  // Determine the 7-Zip executable path
-  if FileExists('C:\Program Files\7-Zip\7z.exe') then
-    ZipPath := 'C:\Program Files\7-Zip\7z.exe'
-  else if FileExists('C:\Program Files (x86)\7-Zip\7z.exe') then
-    ZipPath := 'C:\Program Files (x86)\7-Zip\7z.exe'
-  else
-  begin
-    Log('7-Zip executable not found!');
-    MsgBox('7-Zip executable not found! Please ensure 7-Zip is installed.', mbError, MB_OK);
-    Result := False;
-    Exit;
-  end;
+  Result := False;
 
   // Verify the archive file exists
   if not FileExists(ArchivePath) then
   begin
     Log('Archive file not found: ' + ArchivePath);
-    Result := False;
     Exit;
   end;
 
@@ -580,7 +624,7 @@ begin
   begin
     FirstPartArchivePath := ArchivePath;
     Log('Multi-volume archive detected, using first part: ' + FirstPartArchivePath);
-    CommandLine := Format('"%s" x "%s" -o"%s" -y', [ZipPath, FirstPartArchivePath, DestDir]);
+    CommandLine := Format('"%s" x "%s" -o"%s" -y', [SevenZipPath, FirstPartArchivePath, DestDir]);
   end
   else
   begin
@@ -591,22 +635,56 @@ begin
       Result := True;
       Exit;
     end;
-    CommandLine := Format('"%s" x "%s" -o"%s" -y', [ZipPath, ArchivePath, DestDir]);
+    CommandLine := Format('"%s" x "%s" -o"%s" -y', [SevenZipPath, ArchivePath, DestDir]);
   end;
 
   Log('Running command: ' + CommandLine);
 
-  if not Exec(ZipPath, 'x "' + ArchivePath + '" -o"' + DestDir + '" -y', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  // Use 7-Zip to extract if available
+  if SevenZipPath <> '' then
   begin
-    Log(Format('Failed to execute 7-Zip for %s, error code: %d', [ArchivePath, ResultCode]));
-    Result := False;
+		if not Exec(SevenZipPath, 'x "' + ArchivePath + '" -o"' + DestDir + '" -y', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Log(Format('Failed to execute 7-Zip for %s, error code: %d', [ArchivePath, ResultCode]));
+      Exit;
+    end;
+  end
+	
+  // Use WinRAR to extract if 7-Zip is not available
+  else if WinRARPath <> '' then
+  begin
+    CommandLine := Format('x -ibck -y "%s" "%s\"', [ArchivePath, DestDir]);
+    Log(Format('Running command: "%s" %s', [WinRARPath, CommandLine]));
+
+    if not Exec(WinRARPath, CommandLine, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Log(Format('Failed to execute WinRAR for %s, error code: %d', [ArchivePath, ResultCode]));
+      Result := False;
+      Exit;
+    end;
+
+    if ResultCode <> 0 then
+    begin
+      Log(Format('WinRAR returned error code %d while extracting %s', [ResultCode, ArchivePath]));
+      Result := False;
+      Exit;
+    end
+    else
+    begin
+      Log(Format('Extraction successful for %s', [ArchivePath]));
+    end;
+  end
+
+  else
+  begin
+    Log('No extraction program found!');
+    MsgBox('No extraction program found! Please ensure 7-Zip or WinRAR is installed.', mbError, MB_OK);
     Exit;
   end;
 
   if ResultCode <> 0 then
   begin
-    Log(Format('7-Zip returned error code %d while extracting %s', [ResultCode, ArchivePath]));
-    Result := False;
+    Log(Format('Extraction returned error code %d while extracting %s', [ResultCode, ArchivePath]));
     Exit;
   end;
 
@@ -1090,6 +1168,56 @@ begin
   end;
 end;
 
+function IsNewVersionAvailable: Boolean;
+var
+  HttpCli: Variant;
+  CombinedResponse, FullReleaseName, LatestVersion: string;
+  VersionStartPos: Integer;
+begin
+  Result := False; // Default to false in case of error
+
+  Log('Checking for new version from ' + AppURL);
+  try
+    HttpCli := CreateOleObject('WinHttp.WinHttpRequest.5.1');
+    HttpCli.Open('GET', 'https://api.github.com/repos/' + AppURL + '/releases/latest', False);
+    HttpCli.SetRequestHeader('User-Agent', 'RSS-Reborn-Installer');
+
+    MyAccessToken := ReadGitHubAccessToken;
+    if MyAccessToken <> '' then
+      HttpCli.SetRequestHeader('Authorization', 'token ' + MyAccessToken);
+
+    HttpCli.Send;
+
+    if HttpCli.Status = 200 then
+    begin
+      CombinedResponse := HttpCli.ResponseText;
+      FullReleaseName := ExtractJSONField(CombinedResponse, '"name":"');
+
+      // Extract the version number from FullReleaseName
+      if FullReleaseName <> '' then
+      begin
+        VersionStartPos := Pos('v', FullReleaseName);
+        if VersionStartPos > 0 then
+          LatestVersion := Copy(FullReleaseName, VersionStartPos + 1, Length(FullReleaseName) - VersionStartPos);
+        
+        Log('Fetched latest release version: ' + LatestVersion);
+        Result := CompareStr(LatestVersion, '{#MyAppVersion}') > 0;
+        Log('Is new version available: ' + LatestVersion + ' > ' + '{#MyAppVersion}');
+      end
+      else
+      begin
+        Log('Failed to extract latest version from release name: ' + FullReleaseName);
+      end;
+    end
+    else
+    begin
+      Log('Failed to fetch latest release info, status: ' + IntToStr(HttpCli.Status));
+    end;
+  except
+    Log('Exception occurred while checking for new version: ' + GetExceptionMessage);
+  end;
+end;
+
 procedure PopulateResolutions(ComboBox: TComboBox; RepoIndex: Integer; var Sizes: TStringList);
 // Populates drop down elements in UI with all available resolution packs
 var
@@ -1257,18 +1385,18 @@ end;
 function CheckRP1Confirmation: Boolean;
 // Ensures the user has installed RP-1 before proceeding.
 begin
-  Log('Checking RP-1 confirmation and EVE/Scatterer download confirmation');
+  Log('Checking RSS confirmation and EVE/Scatterer download confirmation');
   Result := True;
   
   if not RP1Checkbox.Checked then
   begin
-    Log('RP-1 confirmation not checked');
-    MsgBox('Please confirm that you have installed and launched RP-1 at least once, and confirm your GameData is backed up. RSS Reborn will not work if RP-1 does not work.', mbError, MB_OK);
+    Log('RSS confirmation not checked');
+    MsgBox('Please confirm that you have installed and launched Real Solar System at least once, and confirm your GameData is backed up. RSS Reborn will not work if RSS does not work.', mbError, MB_OK);
     Result := False; 
   end
   else
   begin
-    Log('RP-1 confirmation checked');
+    Log('RSS confirmation checked');
   end;
   
   if EVEAndScattererCheckbox.Checked then
@@ -1289,12 +1417,20 @@ var
 begin
   Log('Initializing wizard');
 
-  InitializeBodyRepos;
+  InitializeConstants
   InitializeVariables;
 	InitializeArrayLengths;
+  InitializeBodyRepos;
   
   // Read GitHub access token from the registry if it exists
   MyAccessToken := ReadGitHubAccessToken;
+
+  // Check for new version
+  if IsNewVersionAvailable then
+  begin
+    MsgBox('A new version of the installer is available. Please download the latest version from GitHub.', mbInformation, MB_OK);
+    WizardForm.Close;
+  end;
 
 	//Get information ready for the UI
   RetrieveBodyInfo;
@@ -1306,10 +1442,10 @@ begin
   RP1Checkbox.Top := ScaleY(175);
   RP1Checkbox.Width := WizardForm.ClientWidth - ScaleX(36);
   RP1Checkbox.Height := ScaleY(40);
-  RP1Checkbox.Caption := 'I have run RP-1 once and have backed up my GameData.';
+  RP1Checkbox.Caption := 'I have run RSS once and have backed up my GameData.';
   RP1Checkbox.Checked := False;
 	Log('========================================================');
-  Log('RP-1 installation confirmation checkbox created');
+  Log('RSS installation confirmation checkbox created');
 
 	// Checkbox on welcome page
   EVEAndScattererCheckbox := TNewCheckBox.Create(WizardForm);
@@ -1425,7 +1561,8 @@ begin
 end;
 
 procedure SetKSPDir;
-// Sets KSP_DIR based on user input
+var
+  DriveLetter: String;
 begin
   KSP_DIR := KSPDirPage.Values[0];
   if KSP_DIR = '' then
@@ -1435,6 +1572,19 @@ begin
     WizardForm.Close;
     Exit;
   end;
+
+  // Extract the drive letter from the KSP_DIR
+  DriveLetter := Copy(KSP_DIR, 1, 2); // Get the drive letter and colon (e.g., "C:")
+
+  // Check for available disk space (50 GB required)
+  if not IsEnoughDiskSpaceAvailable(DriveLetter) then
+  begin
+    Log('Warning: Not enough disk space available on drive ' + DriveLetter + '.');
+    MsgBox('Warning: Not enough disk space on the selected drive (' + DriveLetter + '). You need at least 50GB of free space.', mbError, MB_OK);
+    KSPDirPage.Values[0] := ''; // Clear the selected directory
+    Exit;
+  end;
+
   Log('KSP directory set to: ' + KSP_DIR);
 end;
 
@@ -1944,7 +2094,7 @@ begin
 		
 		CurrentRVLoc := DestFile;
 		DestRVLoc := DownloadsDir + '\RaymarchedVolumetrics';
-		Extract7Zip(CurrentRVLoc, DestRVLoc)
+		ExtractProgram(CurrentRVLoc, DestRVLoc)
   end;
 end;
 
@@ -2003,7 +2153,7 @@ begin
     // Check if the file is a multi-volume archive part (only .001) or a single archive
     if IsMultiPart or (Pos('.7z', FileName) > 0) or (Pos('.zip', FileName) > 0) then
     begin
-      if Extract7Zip(CurrentLoc, EndDest) then
+      if ExtractProgram(CurrentLoc, EndDest) then
       begin
         Log('Extraction complete:' + CurrentLoc);
         ExtractionSuccessful := True;
@@ -2267,6 +2417,15 @@ begin
     if NoAssetsFound then
     begin
       MsgBox('No assets found for the latest release of one or more bodies. They will not be downloaded.', mbInformation, MB_OK);
+    end;
+  end
+  else if (CurPageID = KSPDirPage.ID) then
+  begin
+    SetKSPDir;
+    if KSPDirPage.Values[0] = '' then
+    begin
+      Result := False; // Prevent navigation if the KSP directory is not set correctly
+      Exit;
     end;
   end;
 end;
