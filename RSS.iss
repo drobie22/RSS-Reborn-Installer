@@ -107,6 +107,8 @@ var
   AppPublisher: String;
   AppURL: String;
   AppExeName: String;
+  RobocopyCommands: TStringList;
+  ReverseRobocopyCommands: TStringList;
 	
 type
   TResolutionPages = array of TWizardPage;
@@ -153,6 +155,7 @@ begin
   BodiesWithNoAssets := TStringList.Create;
 
   UserCanceled := False;
+  DownloadsDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
   Log('Variables initialized.');
   Log('========================================================');
 end;
@@ -164,6 +167,20 @@ begin
   SetLength(Sizes, 12);
   SetLength(SizeLabelList, 12);
   SetLength(SizesList, 12);
+end;
+
+procedure InitializeRobocopyLogs;
+begin
+  RobocopyCommands := TStringList.Create;
+  ReverseRobocopyCommands := TStringList.Create;
+end;
+
+procedure LogRobocopyCommand(const Command, ReverseCommand: string);
+begin
+  RobocopyCommands.Add(Command);
+  ReverseRobocopyCommands.Add(ReverseCommand);
+  Log(' [ROBOCOPY] Executed robocopy command: ' + Command);
+  Log('Reverse robocopy command: ' + ReverseCommand);
 end;
 
 function GetDiskFreeSpaceEx(
@@ -278,6 +295,7 @@ begin
   AssetsStore := TStringList.Create;
   Result := True;
   ReadGitHubAccessTokenOnce;
+  InitializeRobocopyLogs;
 	
 	SevenZipPath := FindProgram('7-Zip', '7z.exe');
 	WinRARPath := FindProgram('WinRAR', 'WinRAR.exe');
@@ -609,7 +627,7 @@ begin
     CommandLine := Format('"%s" x "%s" -o"%s" -y', [SevenZipPath, ArchivePath, DestDir]);
   end;
 
-  Log('Running command: ' + CommandLine);
+  Log('[EXTRACTING] Running command: ' + CommandLine);
 
   // Use 7-Zip to extract if available
   if SevenZipPath <> '' then
@@ -1807,7 +1825,7 @@ end;
 procedure MoveDirectory(const SourceDir, DestDir: string);
 var
   ResultCode: Integer;
-  MoveCommand: string;
+  MoveCommand, ReverseCommand: string;
 begin
   // Ensure the destination directory exists
   if not DirectoryExists(DestDir) then
@@ -1821,11 +1839,30 @@ begin
 
   // Use robocopy to move the directory and its contents
   MoveCommand := Format('robocopy "%s" "%s" /MOVE /E /MT:16 /R:2 /W:5 /COPY:DAT', [SourceDir, DestDir]);
+  ReverseCommand := Format('robocopy "%s" "%s" /MOVE /E /MT:16 /R:2 /W:5 /COPY:DAT', [DestDir, SourceDir]);
+
+   // Check if SourceDir is empty (aka C:\ drive base folder)
+  if SourceDir = '' then
+  begin
+    Log('Error: SourceDir is empty. Aborting installation.');
+    MsgBox('Error: SourceDir is not set. Aborting installation.', mbError, MB_OK);
+    Abort; 
+  end;
+
+   // Check if DestDir is empty (aka C:\ drive base folder)
+  if DestDir = '' then
+  begin
+    Log('Error: DestDir is empty. Aborting installation.');
+    MsgBox('Error: DestDir is not set. Aborting installation.', mbError, MB_OK);
+    Abort; 
+  end;
+
   if Exec('cmd.exe', '/C ' + MoveCommand, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     if ResultCode < 8 then
     begin
       Log('Successfully moved directory: ' + SourceDir + ' to ' + DestDir);
+      LogRobocopyCommand(MoveCommand, ReverseCommand);
     end
     else
     begin
@@ -1958,15 +1995,100 @@ begin
   Log('Successfully moved Scatterer directories.');
 end;
 
+function CheckForGameDataMerged: Boolean;
+var
+  FindRec: TFindRec;
+  DownloadsDirMerged: string;
+begin
+  Result := False;
+  DownloadsDirMerged := KSP_DIR + '\RSSRebornDownloads';
+
+  // Ensure DownloadsDirMerged exists
+  if not DirExists(DownloadsDirMerged) then
+  begin
+    Log('Error: DownloadsDirMerged does not exist.');
+    MsgBox('Error: DownloadsDirMerged does not exist. Aborting installation.', mbError, MB_OK);
+    Abort;
+    Exit;
+  end;
+
+  // List the contents of DownloadsDirMerged
+  if FindFirst(DownloadsDirMerged + '\*', FindRec) then
+  begin
+    try
+      repeat
+        Log('Found: ' + FindRec.Name);
+        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0) and (FindRec.Name = 'GameDataMerged') then
+        begin
+          Result := True;
+          Break;
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+
+  if not Result then
+  begin
+    Log('Error: GameDataMerged folder not found in ' + DownloadsDirMerged);
+    MsgBox('Error: GameDataMerged folder not found. Aborting installation.', mbError, MB_OK);
+    Abort;
+  end;
+end;
+
+function CheckForKopernicus: Boolean;
+var
+  FindRec: TFindRec;
+  DownloadsDirMerged: string;
+begin
+  Result := False;
+  DownloadsDirMerged := KSP_DIR + '\RSSRebornDownloads';
+
+  // Ensure DownloadsDirMerged exists
+  if not DirExists(DownloadsDirMerged) then
+  begin
+    Log('Error: DownloadsDirMerged does not exist.');
+    MsgBox('Error: DownloadsDirMerged does not exist. Aborting installation.', mbError, MB_OK);
+    Abort;
+    Exit;
+  end;
+
+  // List the contents of DownloadsDirMerged
+  if FindFirst(DownloadsDirMerged + '\*', FindRec) then
+  begin
+    try
+      repeat
+        Log('Found: ' + FindRec.Name);
+        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0) and (Pos('Kopernicus', FindRec.Name) = 1) then
+        begin
+          Result := True;
+          Break;
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+
+  if not Result then
+  begin
+    Log('Error: Kopernicus folder not found in ' + DownloadsDirMerged);
+    MsgBox('Error: Kopernicus folder not found. Aborting installation.', mbError, MB_OK);
+    Abort;
+  end;
+end;
+
 procedure MergeGameDataFolders;
 // Takes contents from downloads and puts them together before moving to KSP directory
 var
-  DownloadsDir, GameDataMerged, SourceDir, GameDataDir: string;
+  DownloadsDirMerged, GameDataMerged, SourceDir, GameDataDir: string;
   FindRec: TFindRec;
   ProgressCounter: Integer;
 begin
   // Define the source and destination directories
   GameDataMerged := KSP_DIR + '\RSSRebornDownloads\GameDataMerged';
+  DownloadsDirMerged := KSP_DIR + '\RSSRebornDownloads';
 	
   // Ensure the GameDataMerged directory exists
   if not DirExists(GameDataMerged) then
@@ -1989,11 +2111,44 @@ begin
   ProgressCounter := 0;
   WizardForm.Update;
 
-  if FindFirst(DownloadsDir + '\*', FindRec) then
+  Log('Downloads directory is: ' + DownloadsDir);
+  Log('Downloads directory merged initialized: ' + DownloadsDirMerged);
+
+ // Check if DownloadsDir is empty
+  if DownloadsDir = '' then
+  begin
+    Log('Error: DownloadsDir is empty. Aborting installation.');
+    MsgBox('Error: Downloads directory is not set. Aborting installation.', mbError, MB_OK);
+    Abort; 
+  end;
+
+   // Check if DownloadsDirMerged is empty
+  if DownloadsDirMerged = '' then
+  begin
+    Log('Error: DownloadsDirMerged is empty. Aborting installation.');
+    MsgBox('Error: Downloads directory is not set. Aborting installation.', mbError, MB_OK);
+    Abort; 
+  end;
+
+  if not CheckForGameDataMerged then
+      Abort;
+
+  if not CheckForKopernicus then
+      Abort;
+
+   // Check if KSP_DIR is empty
+  if KSP_DIR = '' then
+  begin
+    Log('Error: KSP_DIR is empty. Aborting installation.');
+    MsgBox('Error: KSP directory is not set. Aborting installation.', mbError, MB_OK);
+    Abort; 
+  end;
+
+  if FindFirst(DownloadsDirMerged + '\*', FindRec) then
   begin
     try
       repeat
-        SourceDir := DownloadsDir + '\' + FindRec.Name;
+        SourceDir := DownloadsDirMerged + '\' + FindRec.Name;
         GameDataDir := SourceDir;
 
         // Skip if it's not a directory, if it's the GameDataMerged directory itself,
@@ -2314,14 +2469,6 @@ begin
   else
     Log('Parallax_StockTextures directory does not exist.');
 
-  if DirectoryExists(KSP_DIR + '\GameData\RSS-Textures') then
-    if not DelTree(KSP_DIR + '\GameData\RSS-Textures', True, True, True) then
-      Log('Failed to delete RSS-Textures directory.')
-    else
-      Log('RSS-Textures directory deleted.')
-  else
-    Log('RSS-Textures directory does not exist.');
-
   if DirectoryExists(KSP_DIR + '\GameData\RSSVE') then
     if not DelTree(KSP_DIR + '\GameData\RSSVE', True, True, True) then
       Log('Failed to delete RSSVE directory.')
@@ -2551,6 +2698,20 @@ end;
 //  end;
 //end;
 
+procedure LogReverseCommandsAtEnd;
+var
+  I: Integer;
+begin
+  Log('========================================================');
+  Log('FOR REFERENCE ONLY - ROBOCOMMANDS:');
+  for I := 0 to ReverseRobocopyCommands.Count - 1 do
+  begin
+    Log(RobocopyCommands[I]);
+    Log(ReverseRobocopyCommands[I]);
+  end;
+  Log('========================================================');
+end;
+
 function InitializeDownloads: Boolean;
 // Helper function to call proc, returns error if it cannot execute 
 begin
@@ -2659,6 +2820,7 @@ begin
 		finally;
 		  MoveGameDataToKSPDir;
 			MergePage.hide;
+      LogReverseCommandsAtEnd;
 		end;
 
       Log('Installation process completed successfully, cleaning up files now');
