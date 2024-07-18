@@ -11,7 +11,7 @@
 ; ...but it works
 
 #define MyAppName "RSS Reborn Installer"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "drobie22/RSS-Reborn-Installer"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
@@ -202,19 +202,6 @@ begin
   FindClose(FindRec);
 end;
 
-procedure ClearDownloadDirectory;
-// Frees up space and prevents conflicts
-begin;
-	DownloadsDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
-	if DirectoryExists(DownloadsDir) then
-    if not DelTree(DownloadsDir, True, True, True) then
-      Log('Failed to delete Downloads directory.')
-    else
-      Log('DownloadsDir directory deleted.')
-  else
-    Log('DownloadsDir directory does not exist.');
-end;
-
 procedure ReadGitHubAccessTokenOnce;
 // Reads the GitHub access token from the environment variable if it exists
 // Allows users to have downloads per hour
@@ -290,7 +277,6 @@ begin
   ReleaseStore := TStringList.Create;
   AssetsStore := TStringList.Create;
   Result := True;
-  ClearDownloadDirectory;
   ReadGitHubAccessTokenOnce;
 	
 	SevenZipPath := FindProgram('7-Zip', '7z.exe');
@@ -1559,7 +1545,7 @@ begin
   end;
 
   // Extract the drive letter from the KSP_DIR
-  DriveLetter := Copy(KSP_DIR, 1, 2); // Get the drive letter and colon (e.g., "C:")
+  DriveLetter := Copy(KSP_DIR, 1, 2); 
 
   // Check for available disk space (50 GB required)
   if not IsEnoughDiskSpaceAvailable(DriveLetter) then
@@ -1585,6 +1571,18 @@ begin
       Log('Failed to create download directory: ' + DownloadsDir);
   end;
   Log('Downloads directory initialized: ' + DownloadsDir);
+end;
+
+procedure ClearDownloadDirectory;
+// Frees up space and prevents conflicts
+begin;
+	if DirectoryExists(DownloadsDir) then
+    if not DelTree(DownloadsDir, True, True, True) then
+      Log('Failed to delete Downloads directory:' + DownloadsDir)
+    else
+      Log('DownloadsDir directory deleted:' + DownloadsDir)
+  else
+    Log('DownloadsDir directory does not exist:' + DownloadsDir);
 end;
 
 function GetRepoDownloadURLs(Repo, Resolution: string): TStringList;
@@ -1968,8 +1966,7 @@ var
   ProgressCounter: Integer;
 begin
   // Define the source and destination directories
-  DownloadsDir := ExpandConstant('{userappdata}\RSSRebornDownloads');
-  GameDataMerged := DownloadsDir + '\GameDataMerged';
+  GameDataMerged := KSP_DIR + '\RSSRebornDownloads\GameDataMerged';
 	
   // Ensure the GameDataMerged directory exists
   if not DirExists(GameDataMerged) then
@@ -1980,6 +1977,7 @@ begin
       Log('Failed to create GameDataMerged directory: ' + GameDataMerged);
       MsgBox('Failed to create GameDataMerged directory: ' + GameDataMerged, mbError, MB_OK);
       RaiseException('Failed to create GameDataMerged directory: ' + GameDataMerged);
+      Abort;
       Exit; 
     end
     else
@@ -2558,6 +2556,7 @@ function InitializeDownloads: Boolean;
 begin
   Result := True;
   try
+    ClearDownloadDirectory;
     InitializeDownloadsDir;
     InitializeDownloadList;
   except
