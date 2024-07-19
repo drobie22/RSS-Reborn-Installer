@@ -64,7 +64,7 @@ const
 	
 var
   AssetDataList: array of TStringList;
-  BodyRepos: array[0..11] of string;
+  BodyRepos: array[0..12] of string;
   BodySizes: array of string;	
 	BodyVersions: array of string;
 	BodiesWithNoAssets: TStringList;
@@ -581,12 +581,13 @@ begin
   BodyRepos[3] := 'RSS-Reborn/RSS-Earth';
   BodyRepos[4] := 'RSS-Reborn/RSS-Luna';
   BodyRepos[5] := 'RSS-Reborn/RSS-Mars';
-  BodyRepos[6] := 'RSS-Reborn/RSS-Jupiter';
-  BodyRepos[7] := 'RSS-Reborn/RSS-Saturn';
-  BodyRepos[8] := 'RSS-Reborn/RSS-Uranus';
-  BodyRepos[9] := 'RSS-Reborn/RSS-Neptune';
-  BodyRepos[10] := 'RSS-Reborn/RSS-AsteroidBelt';
-  BodyRepos[11] := 'RSS-Reborn/RSS-KuiperBelt';
+  BodyRepos[6] := 'RSS-Reborn/RSS-MarsMoons'
+  BodyRepos[7] := 'RSS-Reborn/RSS-Jupiter';
+  BodyRepos[8] := 'RSS-Reborn/RSS-Saturn';
+  BodyRepos[9] := 'RSS-Reborn/RSS-Uranus';
+  BodyRepos[10] := 'RSS-Reborn/RSS-Neptune';
+  BodyRepos[11] := 'RSS-Reborn/RSS-AsteroidBelt';
+  BodyRepos[12] := 'RSS-Reborn/RSS-KuiperBelt';
   Log('BodyRepos array initialized');
 end;
 
@@ -1040,6 +1041,24 @@ begin
       Resolution := 'NoModels';
   end;
 
+  // Handle the case with only one asset without resolution number
+  if Resolution = '' then
+  begin
+    // Extract the part after the first underscore or dash
+    if (UnderscorePos > 0) or (DashPos > 0) then
+    begin
+      if UnderscorePos > 0 then
+        Resolution := Copy(AssetName, UnderscorePos + 1, DotPos - UnderscorePos - 1)
+      else if DashPos > 0 then
+        Resolution := Copy(AssetName, DashPos + 1, DotPos - DashPos - 1);
+    end
+    else
+    begin
+      // If no underscore or dash, use the entire asset name before the extension
+      Resolution := Copy(AssetName, 1, DotPos - 1);
+    end;
+  end;
+
   // Return the extracted resolution
   Result := Resolution;
 end;
@@ -1483,7 +1502,7 @@ begin
   CurrentFileLabelM.Width := MergePage.SurfaceWidth - ScaleX(16);
   CurrentFileLabelM.Caption := 'Initializing Merging...';
 	
-  WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(0);
+  WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(25);
   WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(0);
 
   SetLength(ResolutionCombos, Length(BodyRepos));
@@ -1668,6 +1687,7 @@ var
   DownloadURLs: TStringList;
   I, J: Integer;
   URLExists: Boolean;
+  AssetName: String;
 begin
   Log('========================================================');
   Log('AddToDownloadList called for Repo: ' + Repo + ' with Resolution: ' + Resolution);
@@ -1683,11 +1703,19 @@ begin
     for I := 0 to DownloadURLs.Count - 1 do
     begin
       URLExists := False;
+      AssetName := CustomExtractFileName(DownloadURLs[I]);
 
       // Skip URLs containing "parallax_stocktextures"
       if Pos('parallax_stocktextures', DownloadURLs[I]) > 0 then
       begin
         Log('Skipped URL containing parallax_stocktextures: ' + DownloadURLs[I]);
+        Continue;
+      end;
+
+      // Ensure only RSS_Configs.7z is added for RSS-Configs repository
+      if (Repo = 'RSS-Reborn/RSS-Configs') and (Pos('RSS_Configs.7z', AssetName) = 0) then
+      begin
+        Log('Skipping non-RSS_Configs asset: ' + AssetName);
         Continue;
       end;
 
@@ -2585,11 +2613,12 @@ var
   DownloadResult: HRESULT;
 begin
   Log('========================================================');
-	DownloadPage.SetProgress(0, DownloadList.Count);
+  DownloadPage.SetProgress(0, DownloadList.Count);
+
   for I := 0 to DownloadList.Count - 1 do
   begin
     DownloadPage.SetProgress(I, DownloadList.Count);
-		
+    
     // Extract URL and TempFile from DownloadList
     DownloadItem := DownloadList[I];
     URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
@@ -2597,15 +2626,24 @@ begin
 
     // Ensure the correct destination path
     Dest := DownloadsDir + '\' + FileName;
-		
-		CurrentFileLabel.Caption := 'Downloading: ' + FileName;
+    
+    CurrentFileLabel.Caption := 'Downloading: ' + FileName;
     WizardForm.Update;
     DownloadLogs.Add('Downloading ' + URL + ' to ' + Dest);
 
+    Log('Calling URLDownloadToFile with URL: ' + URL + ' and Dest: ' + Dest);
+    
     DownloadResult := URLDownloadToFile(0, PAnsiChar(URL), PAnsiChar(Dest), 0, 0);
     GitHubCount.Add('Github Call');
-    if not DownloadResult = S_OK then
+
+    if DownloadResult = S_OK then
     begin
+      Log('Successfully downloaded ' + URL + ' to ' + Dest);
+      DownloadLogs.Add('Successfully downloaded ' + URL + ' to ' + Dest);
+    end
+    else
+    begin
+      Log('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult));
       DownloadLogs.Add('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult));
       MsgBox('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult), mbError, MB_OK);
       Exit; // Exit on first failure
@@ -2633,7 +2671,7 @@ begin
 	except
 	  Log('Failed to move GameData to ' + DestDir);
     MsgBox('Failed to move GameData to ' + DestDir + '. Please check the logs for details.', mbError, MB_OK);
-	Exit;
+	Abort;
 	end;
 end;
 
