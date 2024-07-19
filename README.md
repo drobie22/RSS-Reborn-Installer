@@ -73,7 +73,6 @@ Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues
 
 - Support for downloading deferred rendering, user-downloaded and automated installation. 
 - Support for retrieving files from other releases, not just the latest.
-- Support for Scaled models.
 - Support for downloading MTE.
 - Installer can automatically back up your GameData folder and compress it in case of failure.
 
