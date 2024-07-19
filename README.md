@@ -38,8 +38,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 2. Follow the on-screen instructions:
    - Confirm that you have successfully launched Real Solar System at least once.
    - Optionally confirm that you have downloaded Blackrack's Raymarched Volumetrics from Patreon.
-       - If downloaded, drag zip to desktop so the installer can grab it.
-       - Ensure only one folder named "RaymarchedVolumetrics" is on your desktop.
+       - If downloaded, select the file when prompted.
    - Select the desired resolutions for textures.
    - Specify a game directory (defaults to steam install). 
 3. The installer will download, extract, merge, and move the necessary files into your gamedata.
