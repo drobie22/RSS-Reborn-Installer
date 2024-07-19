@@ -11,7 +11,7 @@
 ; ...but it works
 
 #define MyAppName "RSS Reborn Installer"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "drobie22/RSS-Reborn-Installer"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
@@ -76,11 +76,15 @@ var
   DownloadsDir: string;
 	DownloadLogs: TStringList;
 	ExtractionLogs: TStringList;
-	EVEAndScattererCheckbox: TNewCheckBox;
+	RaymarchedVolumetricsCheckbox: TNewCheckBox;
   EVEdownloaded: Boolean;
 	GitHubCount: TStringList;
 	KSP_DIR: string;
+  RAYVOL_DIR: string;
   KSPDirPage: TInputDirWizardPage;
+  FileEdit: TEdit;
+  FileBrowseButton: TButton;
+  FileLabel: TLabel;
 	DownloadPage: TOutputProgressWizardPage;
 	ExtractPage: TOutputProgressWizardPage;
 	MergePage: TOutputProgressWizardPage;
@@ -1406,11 +1410,23 @@ begin
   begin
     Log('RSS confirmation checked');
   end;
-  
-  if EVEAndScattererCheckbox.Checked then
+end;
+
+procedure RaymarchedVolumetricsCheckboxClick(Sender: TObject);
+begin
+  FileEdit.Visible := RaymarchedVolumetricsCheckbox.Checked;
+  FileBrowseButton.Visible := RaymarchedVolumetricsCheckbox.Checked;
+  FileLabel.Visible := RaymarchedVolumetricsCheckbox.Checked;
+end;
+
+procedure BrowseForFile(Sender: TObject);
+var
+  FileName: String;
+begin
+  FileName := '';
+  if GetOpenFileName('Select KSP Executable', FileName, '', 'Zip Files (*.zip)|*.zip|7z Files (*.7z)|*.7z|All Files (*.*)|*.*', 'zip') then
   begin
-    Log('EVE and Scatterer download confirmation checked');
-    MsgBox('Please ensure that Blackrack''s Raymarched Volumetrics zip from Patreon is on your desktop.', mbInformation, MB_OK);
+    FileEdit.Text := FileName;
   end;
 end;
 
@@ -1456,20 +1472,48 @@ begin
   Log('RSS installation confirmation checkbox created');
 
 	// Checkbox on welcome page
-  EVEAndScattererCheckbox := TNewCheckBox.Create(WizardForm);
-  EVEAndScattererCheckbox.Parent := WizardForm.WelcomePage;
-  EVEAndScattererCheckbox.Left := ScaleX(18);
-  EVEAndScattererCheckbox.Top := ScaleY(215);
-  EVEAndScattererCheckbox.Width := WizardForm.ClientWidth - ScaleX(36);
-  EVEAndScattererCheckbox.Height := ScaleY(40);
-  EVEAndScattererCheckbox.Caption := '(Optional) I am using Blackrack''s Volumetric Clouds.';
-  EVEAndScattererCheckbox.Checked := False;
+  RaymarchedVolumetricsCheckbox := TNewCheckBox.Create(WizardForm);
+  RaymarchedVolumetricsCheckbox.Parent := WizardForm.WelcomePage;
+  RaymarchedVolumetricsCheckbox.Left := ScaleX(18);
+  RaymarchedVolumetricsCheckbox.Top := ScaleY(215);
+  RaymarchedVolumetricsCheckbox.Width := WizardForm.ClientWidth - ScaleX(36);
+  RaymarchedVolumetricsCheckbox.Height := ScaleY(40);
+  RaymarchedVolumetricsCheckbox.Caption := '(Optional) I am using Blackrack''s Volumetric Clouds.';
+  RaymarchedVolumetricsCheckbox.Checked := False;
   Log('EVE and Scatterer download confirmation checkbox created');
   
-  // KSP directory input page
+  // Create the KSP directory input page
   KSPDirPage := CreateInputDirPage(wpWelcome, 'KSP Directory', 'Select the KSP directory', 'Please select the directory where Kerbal Space Program is installed.', False, '');
-  KSPDirPage.Add('');
-  KSPDirPage.Values[0] := 'C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program'; 
+  KSPDirPage.Add('KSP Directory');
+  KSPDirPage.Values[0] := 'C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program';
+
+  // Create the label for the file selection control
+  FileLabel := TLabel.Create(WizardForm);
+  FileLabel.Parent := KSPDirPage.Surface;
+  FileLabel.Top := KSPDirPage.Edits[0].Top + KSPDirPage.Edits[0].Height + 10;
+  FileLabel.Left := KSPDirPage.Edits[0].Left;
+  FileLabel.Caption := 'Select Raymarched Volumetrics File:';
+  FileLabel.Visible := False;
+
+  // Create the file selection edit control
+  FileEdit := TEdit.Create(WizardForm);
+  FileEdit.Parent := KSPDirPage.Surface;
+  FileEdit.Top := FileLabel.Top + FileLabel.Height + 5;
+  FileEdit.Left := FileLabel.Left;
+  FileEdit.Width := KSPDirPage.Edits[0].Width + 100;
+  FileEdit.Visible := False;
+
+  // Create the file browse button
+  FileBrowseButton := TButton.Create(WizardForm);
+  FileBrowseButton.Parent := KSPDirPage.Surface;
+  FileBrowseButton.Top := FileEdit.Top;
+  FileBrowseButton.Left := FileEdit.Left + FileEdit.Width + 10;
+  FileBrowseButton.Caption := 'Browse...';
+  FileBrowseButton.OnClick := @BrowseForFile;
+  FileBrowseButton.Visible := False;
+
+  FileBrowseButton.OnClick := @BrowseForFile;
+  RaymarchedVolumetricsCheckbox.OnClick := @RaymarchedVolumetricsCheckboxClick;
 
 	// Resolution input page
   Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
@@ -1594,6 +1638,13 @@ begin
   end;
 
   Log('KSP directory set to: ' + KSP_DIR);
+
+// Handle the optional directory if the checkbox is checked
+  if RaymarchedVolumetricsCheckbox.Checked then
+  begin
+    RAYVOL_DIR := FileEdit.Text;
+    Log('Raymarched Volumetrics File set to: ' + RAYVOL_DIR);
+  end;
 end;
 
 procedure InitializeDownloadsDir;
@@ -1781,7 +1832,7 @@ begin
   AddToDownloadList('RSS-Reborn/RSSVE-Textures', '', (DownloadsDir + '\RSSVE_Textures.7z'));
 
   // Scatterer (if not using Blackrack's)
-	if not EVEAndScattererCheckbox.Checked then
+	if not RaymarchedVolumetricsCheckbox.Checked then
   begin
     AddToDownloadList('LGhassen/Scatterer', '', (DownloadsDir + '\Scatterer.zip'));
   end
@@ -1791,7 +1842,7 @@ begin
   end;
 
   // EVE (if not using Blackrack's)
-  if not EVEAndScattererCheckbox.Checked then
+  if not RaymarchedVolumetricsCheckbox.Checked then
   begin
     AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', (DownloadsDir + '\EVE.zip'));
   end
@@ -1905,12 +1956,12 @@ begin
   end;
 end;
 
-procedure MoveRaymarchedVolumetrics;
-// Moves only the specific directories from RaymarchedVolumetrics to GameDataMerged
+procedure MoveRaymarchedVolumetricsCheckbox;
+// Moves only the specific directories from RaymarchedVolumetricsCheckbox to GameDataMerged
 var
   SourceDir, DestDir: string;
 begin
-  SourceDir := (DownloadsDir + '\RaymarchedVolumetrics\GameData');
+  SourceDir := (DownloadsDir + '\RaymarchedVolumetricsCheckbox\GameData');
   DestDir := (DownloadsDir + '\GameDataMerged\GameData');
 
   // Ensure the destination directory exists
@@ -1944,7 +1995,7 @@ begin
     MoveDirectory(SourceDir + '\Scatterer', DestDir + '\Scatterer');
   end;
 
-  Log('RaymarchedVolumetrics specific directories moved successfully.');
+  Log('RaymarchedVolumetricsCheckbox specific directories moved successfully.');
 end;
 
 procedure MoveParallaxDirectories;
@@ -2180,11 +2231,11 @@ begin
         GameDataDir := SourceDir;
 
         // Skip if it's not a directory, if it's the GameDataMerged directory itself,
-        // if it's RaymarchedVolumetrics, or if the directory name starts with "scatterer"
+        // if it's RaymarchedVolumetricsCheckbox, or if the directory name starts with "scatterer"
         if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) and
            (FindRec.Name <> '.') and (FindRec.Name <> '..') and
            (SourceDir <> GameDataMerged) and
-           (FindRec.Name <> 'RaymarchedVolumetrics') and
+           (FindRec.Name <> 'RaymarchedVolumetricsCheckbox') and
            (Pos('Scatterer', FindRec.Name) = 0) then
         begin
           Log('Moving contents of GameData directory: ' + GameDataDir + ' to ' + GameDataMerged);
@@ -2213,10 +2264,10 @@ begin
   MergePage.SetProgress(ProgressCounter, 50);
 	WizardForm.Update;
 	
-	if EVEAndScattererCheckbox.Checked then
+	if RaymarchedVolumetricsCheckbox.Checked then
 	begin
 	  Inc(ProgressCounter);
-		MoveRaymarchedVolumetrics;
+		MoveRaymarchedVolumetricsCheckbox;
 		CurrentFileLabelM.Caption := 'Merging: Raymarched Volumetrics';
 		MergePage.SetProgress(ProgressCounter, 50);
 		WizardForm.Update;
@@ -2235,46 +2286,20 @@ begin
   MergePage.SetProgress(DownloadList.Count, DownloadList.Count);
 end;
 
-procedure MoveEVEAndScatterer;
-// If using Blackrack's Raymarched Volumetrics
+procedure MoveRaymarchedVolumetrics;
 var
-  SourceDir, DestDir, SearchPattern, SourceFile, DestFile, CurrentRVLoc, DestRVLoc: string;
-  FindRec: TFindRec;
+  SourceFile, DestDir: string;
 begin
-  if EVEAndScattererCheckbox.Checked then
+  if RaymarchedVolumetricsCheckbox.Checked then
   begin
-    SourceDir := ExpandConstant('{userdesktop}'); 
-    DestDir := DownloadsDir;
+    SourceFile := RAYVOL_DIR;
+    DestDir := DownloadsDir + '\RaymarchedVolumetrics';
 
-    // Move EVE and Scatterer zip files
-    SearchPattern := 'RaymarchedVolumetrics*.zip';
-    if FindFirst(SourceDir + '\' + SearchPattern, FindRec) then
+    if not ExtractProgram(SourceFile, DestDir) then
     begin
-      try
-        repeat
-          SourceFile := SourceDir + '\' + FindRec.Name;
-          DestFile := DestDir + '\' + FindRec.Name;
-          try
-            CopyFileAndDelete(SourceFile, DestFile);
-            Log('Moved ' + FindRec.Name + ' to ' + DestDir);
-          except
-            Log('Failed to move ' + FindRec.Name + ' to ' + DestDir);
-						MsgBox('Failed to move' + FindRec.Name + '. Please check the logs for details.', mbError, MB_OK);
-						Exit;
-          end;
-        until not FindNext(FindRec);
-      finally
-        FindClose(FindRec);
-      end;
-    end
-    else
-    begin
-      Log('No files matching ' + SearchPattern + ' found in ' + SourceDir);
+      Log('Failed to extract ' + SourceFile + ' to ' + DestDir);
+      MsgBox('Failed to extract ' + SourceFile + '. Please check the logs for details.', mbError, MB_OK);
     end;
-		
-		CurrentRVLoc := DestFile;
-		DestRVLoc := DownloadsDir + '\RaymarchedVolumetrics';
-		ExtractProgram(CurrentRVLoc, DestRVLoc)
   end;
 end;
 
@@ -2287,7 +2312,7 @@ var
 begin
 	
 	// First move and extract Raymarched Volumetrics if checked 
-	if not EVEAndScattererCheckbox.Checked then
+	if not RaymarchedVolumetricsCheckbox.Checked then
   begin
 	  Count := DownloadList.Count;
     Log('Not moving/extracting Blackrack''s Volumetrics');
@@ -2300,7 +2325,7 @@ begin
 		Log('Moving/extracting Blackrack''s Volumetrics');
 		CurrentFileLabelE.Caption := 'Extracting: Raymarched Volumetrics';
 		WizardForm.Update;
-		MoveEVEAndScatterer;
+		MoveRaymarchedVolumetrics;
 	  ExtractPage.SetProgress(1, Count);
 		WizardForm.Update;
   end;
@@ -2572,7 +2597,6 @@ begin
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
-// When user changes the UI page, checks are made
 begin
   Log('Next button clicked, CurPageID: ' + IntToStr(CurPageID));
   Result := True; // Allow navigation by default
@@ -2596,7 +2620,21 @@ begin
     SetKSPDir;
     if KSPDirPage.Values[0] = '' then
     begin
-      Result := False; // Prevent navigation if the KSP directory is not set correctly
+      Result := False; 
+      Exit;
+    end;
+  end;
+
+  if (CurPageID = KSPDirPage.ID) and (RaymarchedVolumetricsCheckbox.Checked) then
+  begin
+    if (FileEdit.Text = '') or 
+      ((LowerCase(ExtractFileExt(FileEdit.Text)) <> '.zip') and 
+        (LowerCase(ExtractFileExt(FileEdit.Text)) <> '.7z')) or 
+      (Pos('RaymarchedVolumetrics', ExtractFileName(FileEdit.Text)) = 0) then
+    begin
+      MsgBox('Please select a valid Raymarched Volumetrics compressed file.', mbError, MB_OK);
+      Log('Selected file for Raymarched Volumetrics:' + FileEdit.Text)
+      Result := False;
       Exit;
     end;
   end;
