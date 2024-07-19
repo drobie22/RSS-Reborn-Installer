@@ -113,6 +113,8 @@ var
   AppExeName: String;
   RobocopyCommands: TStringList;
   ReverseRobocopyCommands: TStringList;
+  ScaledCheckboxes: array of TCheckBox;
+  ScaledAssetsAvailable: array of Boolean;
 	
 type
   TResolutionPages = array of TWizardPage;
@@ -1238,6 +1240,7 @@ var
   Size, TotalSize: Int64;
   AddedResolutions: TStringList;
   ResolutionIndex: Integer;
+  ScaledAvailable: Boolean;
 begin
   NoAssetsFound := False;
   AddedResolutions := TStringList.Create;
@@ -1256,7 +1259,8 @@ begin
 
     // Use Stored data from RetrieveBodyInfo
     LatestReleaseAssetsJSON := AssetDataList[RepoIndex].Text;
-
+  
+    ScaledAvailable := False;
     StartPos := 1;
     while StartPos > 0 do
     begin
@@ -1271,10 +1275,11 @@ begin
           Resolution := ExtractResolution(AssetName);
           Log('Populate Resolutions found asset: ' + AssetName + ' with resolution: ' + Resolution);
 
-          // Exclude files with "scale" in the name
+          // Assets with "scale" in the name
           if (Pos('scale', LowerCase(AssetName)) > 0) then
           begin
-            Log('Skipping asset: ' + AssetName + ' due to exclusion criteria.');
+            Log('Scaled Asset found: ' + AssetName);
+            ScaledAvailable := True;
             StartPos := J + 1;
             Continue;
           end;
@@ -1318,7 +1323,9 @@ begin
             end;
           end;
           StartPos := J + 1;
-        end;
+        end
+        else
+          Break;
       end
       else
         Break;
@@ -1340,6 +1347,13 @@ begin
     begin
       ComboBox.ItemIndex := 0;
       UpdateSizeLabel(ComboBox.Tag);
+    end;
+
+    // Show a checkbox if scaled assets are available
+    if ScaledAvailable then
+    begin
+      ScaledCheckboxes[RepoIndex].Visible := True;
+      ScaledAssetsAvailable[RepoIndex] := True;
     end;
   finally
     AddedResolutions.Free;
@@ -1552,6 +1566,8 @@ begin
   SetLength(ResolutionCombos, Length(BodyRepos));
   SetLength(SizesList, Length(BodyRepos));
   SetLength(SizeLabelList, Length(BodyRepos));
+  SetLength(ScaledCheckboxes, Length(BodyRepos));
+  SetLength(ScaledAssetsAvailable, Length(BodyRepos));
 
   PageHeight := 0;
 
@@ -1575,6 +1591,14 @@ begin
     ComboBox.OnChange := @ComboBoxChange;
     ComboBox.Tag := I;
     ResolutionCombos[I] := ComboBox;
+    
+    // Scaled Asset Checkbox
+    ScaledCheckboxes[I] := TNewCheckBox.Create(Page);
+    ScaledCheckboxes[I].Parent := Page.Surface;
+    ScaledCheckboxes[I].Left := ScaleX(220);
+    ScaledCheckboxes[I].Top := ScaleY(PageHeight);
+    ScaledCheckboxes[I].Caption := 'Include Scaled';
+    ScaledCheckboxes[I].Visible := False;
 
     SizesList[I] := TStringList.Create;
     PopulateResolutions(ComboBox, I, SizesList[I]);
@@ -1584,7 +1608,7 @@ begin
 		// Texture Version No.
     VersionLabel := TLabel.Create(Page);
     VersionLabel.Parent := Page.Surface;
-    VersionLabel.Left := ScaleX(275);
+    VersionLabel.Left := ScaleX(325);
     VersionLabel.Top := ScaleY(PageHeight);
     if I < Length(BodyVersions) then
       VersionLabel.Caption := 'Version: ' + BodyVersions[I];
@@ -1673,24 +1697,24 @@ begin;
     Log('DownloadsDir directory does not exist:' + DownloadsDir);
 end;
 
-function GetRepoDownloadURLs(Repo, Resolution: string): TStringList;
+function GetRepoDownloadURLs(Repo, Resolution: string; IsScaled: Boolean): TStringList;
 var
   AssetName, BrowserDownloadURL: string;
   I, J, StartPos: Integer;
   ReleaseJSON, AssetsJSON: string;
 begin
   Result := TStringList.Create;
-  Log('GetRepoDownloadURLs is attempting to retrieve Stored data for repository: ' + Repo + ' with Resolution: ' + Resolution);
+  Log('GetRepoDownloadURLs is attempting to retrieve stored data for repository: ' + Repo + ' with Resolution: ' + Resolution);
 
   if GetStoredJSONForRepo(Repo, Resolution, ReleaseJSON, AssetsJSON) then
   begin
     LatestReleaseAssetsJSON := AssetsJSON;
     LatestReleaseJSON := ReleaseJSON;
-    Log('GetRepoDownloadURLs is using Stored release info for ' + Repo);
+    Log('GetRepoDownloadURLs is using stored release info for ' + Repo);
   end
   else
   begin
-    Log('No Stored data found for ' + Repo + '. Fetching latest release info.');
+    Log('No stored data found for ' + Repo + '. Fetching latest release info.');
     GetLatestReleaseHTTPInfo(Repo);
     StoreReleaseInfo(Repo, Resolution, LatestReleaseJSON, LatestReleaseAssetsJSON);
   end;
@@ -1708,7 +1732,7 @@ begin
         AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
         Log('Found asset: ' + AssetName);
         
-        if (Resolution = '') or (ExtractResolution(AssetName) = Resolution) then
+        if (Resolution = '') or (ExtractResolution(AssetName) = Resolution) or (IsScaled and (Pos('scaled', LowerCase(AssetName)) > 0)) then
         begin
           I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
           if I > 0 then
@@ -1719,6 +1743,8 @@ begin
             begin
               BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
               Result.Add(BrowserDownloadURL);
+              //
+              
               Log('Added download URL: ' + BrowserDownloadURL);
             end;
           end;
@@ -1733,7 +1759,7 @@ begin
   Log('Completed retrieving download URLs for repository: ' + Repo);
 end;
 
-procedure AddToDownloadList(Repo, Resolution, DestFilePath: string);
+procedure AddToDownloadList(Repo, Resolution, DestFilePath: string; IncludeScaled: Boolean);
 var
   DownloadURLs: TStringList;
   I, J: Integer;
@@ -1749,7 +1775,8 @@ begin
     StoreReleaseInfo(Repo, Resolution, LatestReleaseJSON, LatestReleaseAssetsJSON);
   end;
 
-  DownloadURLs := GetRepoDownloadURLs(Repo, Resolution);
+  DownloadURLs := GetRepoDownloadURLs(Repo, Resolution, IncludeScaled);
+  
   try
     for I := 0 to DownloadURLs.Count - 1 do
     begin
@@ -1789,6 +1816,7 @@ begin
         Log('Duplicate URL found and skipped: ' + DownloadURLs[I]);
       end;
     end;
+
   finally
     DownloadURLs.Free;
   end;
@@ -1799,42 +1827,44 @@ procedure InitializeDownloadList;
 var
   Resolution, ParallaxURL: string;
   I: Integer;
+  IncludeScaled: Boolean;
 begin
   Log('InitializeDownloadList called');
-
-  // Kopernicus
-  AddToDownloadList('ballisticfox/Kopernicus', '', (DownloadsDir + '\Kopernicus.7z'));
-	
-	// RSS-Terrain
-  AddToDownloadList('RSS-Reborn/RSS-Terrain', '', (DownloadsDir + '\RSS_Terrain.7z'));
+  
+  // RSS-Terrain
+  AddToDownloadList('RSS-Reborn/RSS-Terrain', '', (DownloadsDir + '\RSS_Terrain.7z'), False);
 
   // RSS-Configs
-  AddToDownloadList('RSS-Reborn/RSS-Configs', '', (DownloadsDir + '\RSS_Configs.7z'));
+  AddToDownloadList('RSS-Reborn/RSS-Configs', '', (DownloadsDir + '\RSS_Configs.7z'), False);
+  
+  // Kopernicus
+  AddToDownloadList('ballisticfox/Kopernicus', '', (DownloadsDir + '\Kopernicus.7z'), False);
 
-	// Planetary textures at user-selected resolutions
-	for I := 0 to High(BodyRepos) do
-	begin
-		if (ResolutionCombos[I] <> nil) and (ResolutionCombos[I].ItemIndex >= 0) then
-		begin
-			Resolution := ResolutionCombos[I].Text;
-			AddToDownloadList(BodyRepos[I], Resolution, (DownloadsDir + '\' + ExtractBodyName(BodyRepos[I]) + '_' + Resolution + '.7z'));
-		end
-		else
-		begin
-			Log('ResolutionCombos[' + IntToStr(I) + '] is not initialized or has no selected item.');
-		end;
-	end;
+  // Planetary textures at user-selected resolutions
+  for I := 0 to High(BodyRepos) do
+  begin
+    if (ResolutionCombos[I] <> nil) and (ResolutionCombos[I].ItemIndex >= 0) then
+    begin
+      Resolution := ResolutionCombos[I].Text;
+      IncludeScaled := ScaledCheckboxes[I].Checked; // Check if scaled textures are to be added
+      AddToDownloadList(BodyRepos[I], Resolution, (DownloadsDir + '\' + ExtractBodyName(BodyRepos[I]) + '_' + Resolution + '.7z'), IncludeScaled);
+    end
+    else
+    begin
+      Log('ResolutionCombos[' + IntToStr(I) + '] is not initialized or has no selected item.');
+    end;
+  end;
 
   // RSSVE-Configs 
-  AddToDownloadList('RSS-Reborn/RSSVE-Configs', '', (DownloadsDir + '\RSSVE_Configs.7z'));
+  AddToDownloadList('RSS-Reborn/RSSVE-Configs', '', (DownloadsDir + '\RSSVE_Configs.7z'), False);
 
   // RSSVE-Textures
-  AddToDownloadList('RSS-Reborn/RSSVE-Textures', '', (DownloadsDir + '\RSSVE_Textures.7z'));
+  AddToDownloadList('RSS-Reborn/RSSVE-Textures', '', (DownloadsDir + '\RSSVE_Textures.7z'), False);
 
   // Scatterer (if not using Blackrack's)
-	if not RaymarchedVolumetricsCheckbox.Checked then
+  if not RaymarchedVolumetricsCheckbox.Checked then
   begin
-    AddToDownloadList('LGhassen/Scatterer', '', (DownloadsDir + '\Scatterer.zip'));
+    AddToDownloadList('LGhassen/Scatterer', '', (DownloadsDir + '\Scatterer.zip'), False);
   end
   else
   begin
@@ -1844,7 +1874,7 @@ begin
   // EVE (if not using Blackrack's)
   if not RaymarchedVolumetricsCheckbox.Checked then
   begin
-    AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', (DownloadsDir + '\EVE.zip'));
+    AddToDownloadList('LGhassen/EnvironmentalVisualEnhancements', '', (DownloadsDir + '\EVE.zip'), False);
   end
   else
   begin
@@ -1852,9 +1882,9 @@ begin
   end;
 
   // Download Parallax
-		ParallaxVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
-    ParallaxURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + ParallaxVersion + '/Parallax-' + ParallaxVersion + '.zip';
-    AddToDownloadList('Gameslinx/Tessellation', '', (DownloadsDir + '\Parallax-' + ParallaxVersion + '.zip'));
+  ParallaxVersion := GetLatestReleaseVersion('Gameslinx/Tessellation');
+  ParallaxURL := 'https://github.com/Gameslinx/Tessellation/releases/download/' + ParallaxVersion + '/Parallax-' + ParallaxVersion + '.zip';
+  AddToDownloadList('Gameslinx/Tessellation', '', (DownloadsDir + '\Parallax-' + ParallaxVersion + '.zip'), False);
 end;
 
 procedure CopyFileAndDelete(const SourceFile, DestFile: string);
@@ -2138,7 +2168,7 @@ begin
   begin
     try
       repeat
-        Log('Found: ' + FindRec.Name);
+        //Log('Found: ' + FindRec.Name);
         if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0) and (Pos('Kopernicus', FindRec.Name) = 1) then
         begin
           Result := True;
@@ -2426,7 +2456,7 @@ begin
   // Check for any failure messages in DownloadLogs
   for I := 0 to DownloadLogs.Count - 1 do
   begin
-    Log(DownloadLogs[I]);
+    //Log(DownloadLogs[I]); //Debugging
     if Pos('Error: ', DownloadLogs[I]) > 0 then
     begin
       AllFilesDownloaded := False;
@@ -2653,6 +2683,12 @@ begin
   Log('========================================================');
   DownloadPage.SetProgress(0, DownloadList.Count);
 
+  // List Downloads
+  for I := 0 to DownloadList.Count - 1 do
+  begin
+    Log(DownloadList[I]);
+  end;
+
   for I := 0 to DownloadList.Count - 1 do
   begin
     DownloadPage.SetProgress(I, DownloadList.Count);
@@ -2667,7 +2703,6 @@ begin
     
     CurrentFileLabel.Caption := 'Downloading: ' + FileName;
     WizardForm.Update;
-    DownloadLogs.Add('Downloading ' + URL + ' to ' + Dest);
 
     Log('Calling URLDownloadToFile with URL: ' + URL + ' and Dest: ' + Dest);
     
@@ -2684,7 +2719,7 @@ begin
       Log('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult));
       DownloadLogs.Add('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult));
       MsgBox('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult), mbError, MB_OK);
-      Exit; // Exit on first failure
+      Exit; 
     end;
   end;
   DownloadPage.SetProgress(DownloadList.Count, DownloadList.Count);
