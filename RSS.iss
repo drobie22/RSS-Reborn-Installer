@@ -11,7 +11,7 @@
 ; ...but it works
 
 #define MyAppName "RSS Reborn Installer"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.1.1"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "drobie22/RSS-Reborn-Installer"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
@@ -1784,16 +1784,16 @@ begin
       AssetName := CustomExtractFileName(DownloadURLs[I]);
 
       // Skip URLs containing "parallax_stocktextures"
-      if Pos('parallax_stocktextures', DownloadURLs[I]) > 0 then
+      if Pos('parallax_stocktextures', LowerCase(DownloadURLs[I])) > 0 then
       begin
         Log('Skipped URL containing parallax_stocktextures: ' + DownloadURLs[I]);
         Continue;
       end;
 
       // Ensure only RSS_Configs.7z is added for RSS-Configs repository
-      if (Repo = 'RSS-Reborn/RSS-Configs') and (Pos('RSS_Configs.7z', AssetName) = 0) then
+      if (Repo = 'RSS-Reborn/RSS-Configs') and (Pos('RSS_Configs-OldBiomes.7z', AssetName) > 0) then
       begin
-        Log('Skipping non-RSS_Configs asset: ' + AssetName);
+        Log('Skipping RSS_Configs-OldBiomes asset: ' + AssetName);
         Continue;
       end;
 

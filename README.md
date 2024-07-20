@@ -76,6 +76,7 @@ Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues
 - Support for Scaled models.
 - Support for downloading MTE.
 - Installer can automatically back up your GameData folder and compress it in case of failure.
+- Increased checks and validations after download and install. 
 
 ## Credits
 
