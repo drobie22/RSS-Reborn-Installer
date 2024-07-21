@@ -2873,6 +2873,61 @@ begin
 	ClearDownloadDirectory;
 end;
 
+procedure CheckAndAddFolder(const FolderName: string; ModList, MissingMods: TStringList; GameDataPath: string);
+begin
+  if not DirExists(GameDataPath + '\' + FolderName) then
+  begin
+    MissingMods.Add(FolderName);
+  end
+  else
+  begin
+    ModList.Add(FolderName);
+  end;
+end;
+
+procedure ListGameDataFolders;
+var
+  GameDataPath: string;
+  ModList, MissingMods: TStringList;
+  MsgText: string;
+  i: Integer;
+begin
+  // Set the path to the GameData folder
+  GameDataPath := KSP_DIR + '\GameData';
+
+  // Initialize the string lists to store mod folder names and missing mods
+  ModList := TStringList.Create;
+  MissingMods := TStringList.Create;
+  try
+    // List of required mods
+    CheckAndAddFolder('Kopernicus', ModList, MissingMods, GameDataPath);
+    CheckAndAddFolder('RSS-Configs', ModList, MissingMods, GameDataPath);
+    CheckAndAddFolder('RSS-Terrain', ModList, MissingMods, GameDataPath);
+    CheckAndAddFolder('RSS-Textures', ModList, MissingMods, GameDataPath);
+    CheckAndAddFolder('RSSVE-Configs', ModList, MissingMods, GameDataPath);
+    CheckAndAddFolder('RSSVE-Textures', ModList, MissingMods, GameDataPath);
+    CheckAndAddFolder('Scatterer', ModList, MissingMods, GameDataPath);
+    CheckAndAddFolder('EnvironmentalVisualEnhancements', ModList, MissingMods, GameDataPath);
+
+    // Log the complete mod list
+    Log('Installed mods in GameData folder:');
+    for i := 0 to ModList.Count - 1 do
+    begin
+      Log(' - ' + ModList[i]);
+    end;
+
+    // If there are missing mods, show a message to the user
+    if MissingMods.Count > 0 then
+    begin
+      MsgText := 'The following mods are missing from your GameData folder: ' + MissingMods.CommaText;
+      MsgBox(MsgText, mbError, MB_OK);
+    end;
+  finally
+    ModList.Free;
+    MissingMods.Free;
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 // Actual process steps for installation
 begin
@@ -2933,6 +2988,9 @@ begin
 			MergePage.hide;
       LogReverseCommandsAtEnd;
 		end;
+
+      // List all folders in the GameData directory at the end and check for missing mods
+      ListGameDataFolders;
 
       Log('Installation process completed successfully, cleaning up files now');
 			DeinitializeSetup;
