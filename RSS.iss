@@ -11,7 +11,7 @@
 ; ...but it works
 
 #define MyAppName "RSS Reborn Installer"
-#define MyAppVersion "1.1.1"
+#define MyAppVersion "1.1.2"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "drobie22/RSS-Reborn-Installer"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
@@ -1984,12 +1984,12 @@ begin
   end;
 end;
 
-procedure MoveRaymarchedVolumetricsCheckbox;
-// Moves only the specific directories from RaymarchedVolumetricsCheckbox to GameDataMerged
+procedure MoveRaymarchedVolumetrics;
+// Moves only the specific directories from RaymarchedVolumetrics to GameDataMerged
 var
   SourceDir, DestDir: string;
 begin
-  SourceDir := (DownloadsDir + '\RaymarchedVolumetricsCheckbox\GameData');
+  SourceDir := (DownloadsDir + '\RaymarchedVolumetrics\GameData');
   DestDir := (DownloadsDir + '\GameDataMerged\GameData');
 
   // Ensure the destination directory exists
@@ -2023,7 +2023,7 @@ begin
     MoveDirectory(SourceDir + '\Scatterer', DestDir + '\Scatterer');
   end;
 
-  Log('RaymarchedVolumetricsCheckbox specific directories moved successfully.');
+  Log('RaymarchedVolumetrics specific directories moved successfully.');
 end;
 
 procedure MoveParallaxDirectories;
@@ -2263,11 +2263,11 @@ begin
         WizardForm.Update;
 
         // Skip if it's not a directory, if it's the GameDataMerged directory itself,
-        // if it's RaymarchedVolumetricsCheckbox, or if the directory name starts with "scatterer"
+        // if it's RaymarchedVolumetrics, or if the directory name starts with "scatterer"
         if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) and
            (FindRec.Name <> '.') and (FindRec.Name <> '..') and
            (SourceDir <> GameDataMerged) and
-           (FindRec.Name <> 'RaymarchedVolumetricsCheckbox') and
+           (FindRec.Name <> 'RaymarchedVolumetrics') and
            (Pos('Scatterer', FindRec.Name) = 0) then
         begin
           Log('Moving contents of GameData directory: ' + GameDataDir + ' to ' + GameDataMerged);
@@ -2298,7 +2298,7 @@ begin
 	if RaymarchedVolumetricsCheckbox.Checked then
 	begin
 	  Inc(ProgressCounter);
-		MoveRaymarchedVolumetricsCheckbox;
+		MoveRaymarchedVolumetrics;
 		CurrentFileLabelM.Caption := 'Merging: Raymarched Volumetrics';
 		MergePage.SetProgress(ProgressCounter, 50);
 		WizardForm.Update;
@@ -2312,12 +2312,15 @@ begin
 		WizardForm.Update;
 	end;
 
+  CurrentFileLabelM.Caption := 'Wrapping Up...';
+  WizardForm.Update;
+
   MergePage.SetProgress(50, 50);
   WizardForm.Update;
   MergePage.SetProgress(DownloadList.Count, DownloadList.Count);
 end;
 
-procedure MoveRaymarchedVolumetrics;
+procedure ExtractRaymarchedVolumetrics;
 var
   SourceFile, DestDir: string;
 begin
@@ -2356,7 +2359,7 @@ begin
 		Log('Moving/extracting Blackrack''s Volumetrics');
 		CurrentFileLabelE.Caption := 'Extracting: Raymarched Volumetrics';
 		WizardForm.Update;
-		MoveRaymarchedVolumetrics;
+		ExtractRaymarchedVolumetrics;
 	  ExtractPage.SetProgress(1, Count);
 		WizardForm.Update;
   end;
@@ -2617,6 +2620,22 @@ begin
   else
     Log('Scatterer directory does not exist.');
 
+  if DirectoryExists(KSP_DIR + '\GameData\StockScattererConfigs') then
+    if not DelTree(KSP_DIR + '\GameData\StockScattererConfigs', True, True, True) then
+      Log('Failed to delete StockScattererConfigs directory.')
+    else
+      Log('StockScattererConfigs directory deleted.')
+  else
+    Log('ScatteStockScattererConfigsrer directory does not exist.');
+
+    if DirectoryExists(KSP_DIR + '\GameData\StockVolumetricClouds') then
+    if not DelTree(KSP_DIR + '\GameData\StockVolumetricClouds', True, True, True) then
+      Log('Failed to delete StockVolumetricClouds directory.')
+    else
+      Log('StockVolumetricClouds directory deleted.')
+  else
+    Log('StockVolumetricClouds directory does not exist.');
+    
   Log('Folders removal completed.');
 end;
 
@@ -2924,12 +2943,54 @@ begin
     // If there are missing mods, show a message to the user
     if MissingMods.Count > 0 then
     begin
-      MsgText := 'The following mods are missing from your GameData folder: ' + MissingMods.CommaText;
+      MsgText := 'The following mods are missing from your GameData folder: ' + MissingMods.CommaText + ' ';
       MsgBox(MsgText, mbError, MB_OK);
     end;
   finally
     ModList.Free;
     MissingMods.Free;
+  end;
+end;
+
+procedure CopySetupLog;
+var
+  LogFileName, SourceLogPath, DestLogPath: string;
+  KSPLogDir: string;
+begin
+  // Define the KSP log directory
+  KSPLogDir := KSP_DIR + '\Logs\RSSRebornInstallerLogs';
+
+  // Create the directory if it doesn't exist
+  if not DirExists(KSPLogDir) then
+  begin
+    if not CreateDir(KSPLogDir) then
+    begin
+      Log('Failed to create log directory: ' + KSPLogDir);
+      Exit;
+    end;
+  end;
+
+  // Find the most recent setup log file in the AppData local temp directory
+  LogFileName := FileSearch('Setup Log *.txt', ExpandConstant('{localappdata}\Temp'));
+
+  if LogFileName <> '' then
+  begin
+    SourceLogPath := ExpandConstant('{localappdata}\Temp\' + LogFileName);
+    DestLogPath := KSPLogDir + '\' + LogFileName;
+
+    // Copy the log file to the KSP log directory
+    if not FileCopy(SourceLogPath, DestLogPath, False) then
+    begin
+      Log('Failed to copy log file: ' + SourceLogPath + ' to ' + DestLogPath);
+    end
+    else
+    begin
+      Log('Log file copied successfully: ' + SourceLogPath + ' to ' + DestLogPath);
+    end;
+  end
+  else
+  begin
+    Log('No setup log files found in the Temp directory.');
   end;
 end;
 
@@ -3000,5 +3061,6 @@ begin
       Log('Installation process completed successfully, cleaning up files now');
 			DeinitializeSetup;
 
+      CopySetupLog;
   end;
 end;

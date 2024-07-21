@@ -1,8 +1,8 @@
 # RSS Reborn Installer
 
-Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer! This installer is designed to help you easily set up Ballisticfox's RSS Reborn mod for RP-1 (RSS/RO).
+Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer! This installer is designed to help you easily set up Ballisticfox's RSS Reborn.
 
-![RSS Reborn Installer](https://github.com/drobie22/RSS-Reborn-Installer/blob/main/Images/v1uiwizard.png?raw=true)
+![RSS Reborn Installer](https://github.com/drobie22/RSS-Reborn-Installer/blob/main/Images/V1-1-0wizard.png)
 
 ## Features
 
@@ -31,6 +31,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 
 1. Go to the [Releases](https://github.com/drobie22/RSS-Reborn-Installer/releases) page.
 2. Download the latest version of the `RSS-Reborn-Installer.exe`.
+   - If the download does not work, try the zip file.
 
 ### Step 3: Run the Installer
 
@@ -67,15 +68,16 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
  
 #### If you encounter a problem not listed:
 
-Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues) with your log (found in the directory: `C:\Users\yourusername\AppData\Local\Temp`, where yourusername is the name of your windows user). The log will look something like `Setup Log 2024-07-15 #001.txt`.
+Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues) with your latest log (found in your KSP directory inside `\Logs\RSSRebornInstallerLogs`. 
+The log will look something like `Setup Log 2024-07-15 #001.txt`.
 
 ## Future Updates
 
 - Support for downloading deferred rendering, user-downloaded and automated installation. 
 - Support for retrieving files from other releases, not just the latest.
 - Support for downloading MTE.
-- Installer can automatically back up your GameData folder and compress it in case of failure.
-- Increased checks and validations after download and install. 
+- Installer will automatically back up your GameData folder and compress it in case of failure.
+- Local caching of files to speed up installation time
 
 ## Credits
 
