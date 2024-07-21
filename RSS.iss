@@ -1743,9 +1743,7 @@ begin
             begin
               BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
               Result.Add(BrowserDownloadURL);
-              //
-              
-              Log('Added download URL: ' + BrowserDownloadURL);
+              //Log('Added download URL: ' + BrowserDownloadURL);
             end;
           end;
         end;
@@ -1791,9 +1789,9 @@ begin
       end;
 
       // Ensure only RSS_Configs.7z is added for RSS-Configs repository
-      if (Repo = 'RSS-Reborn/RSS-Configs') and (Pos('RSS_Configs-OldBiomes.7z', AssetName) > 0) then
+      if (Repo = 'RSS-Reborn/RSS-Configs') and (Pos('OldBiomes', AssetName) > 0) then
       begin
-        Log('Skipping RSS_Configs-OldBiomes asset: ' + AssetName);
+        Log('Skipping asset: ' + AssetName);
         Continue;
       end;
 
@@ -1808,7 +1806,7 @@ begin
 
       if not URLExists then
       begin
-        Log('Adding download URL: ' + DownloadURLs[I]);
+        Log('Adding download URL to list: ' + DownloadURLs[I]);
         DownloadList.Add(DownloadURLs[I] + '=' + DestFilePath);
       end
       else
@@ -2260,6 +2258,10 @@ begin
         SourceDir := DownloadsDirMerged + '\' + FindRec.Name;
         GameDataDir := SourceDir;
 
+        WizardForm.Update;
+        CurrentFileLabelM.Caption := 'Merging: ' + GameDataDir;
+        WizardForm.Update;
+
         // Skip if it's not a directory, if it's the GameDataMerged directory itself,
         // if it's RaymarchedVolumetricsCheckbox, or if the directory name starts with "scatterer"
         if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) and
@@ -2278,7 +2280,6 @@ begin
         
         // Update progress
         Inc(ProgressCounter);
-        CurrentFileLabelM.Caption := 'Merging: ' + GameDataDir;
         MergePage.SetProgress(ProgressCounter, 50);
         WizardForm.Update;
                 
@@ -2887,13 +2888,14 @@ end;
 
 procedure ListGameDataFolders;
 var
-  GameDataPath: string;
+  GameDataPath, TexturesDir: string;
   ModList, MissingMods: TStringList;
   MsgText: string;
   i: Integer;
 begin
   // Set the path to the GameData folder
   GameDataPath := KSP_DIR + '\GameData';
+  TexturesDIr := GameDataPath + '\RSS-Textures\PluginData'
 
   // Initialize the string lists to store mod folder names and missing mods
   ModList := TStringList.Create;
@@ -2908,6 +2910,9 @@ begin
     CheckAndAddFolder('RSSVE-Textures', ModList, MissingMods, GameDataPath);
     CheckAndAddFolder('Scatterer', ModList, MissingMods, GameDataPath);
     CheckAndAddFolder('EnvironmentalVisualEnhancements', ModList, MissingMods, GameDataPath);
+    CheckAndAddFolder('03_Earth', ModList, MissingMods, TexturesDIr);
+    CheckAndAddFolder('03-01_Moon', ModList, MissingMods, TexturesDIr);
+    CheckAndAddFolder('04_Mars', ModList, MissingMods, TexturesDIr);
 
     // Log the complete mod list
     Log('Installed mods in GameData folder:');
