@@ -71,6 +71,9 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
 Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues) with your latest log (found in your KSP directory inside `\Logs\RSSRebornInstallerLogs`. 
 The log will look something like `Setup Log 2024-07-15 #001.txt`.
 
+Alternatively, the log can be found in the directory: C:\Users\yourusername\AppData\Local\Temp, where yourusername is the name of your windows user. 
+The log will still look something like Setup Log 2024-07-15 #001.txt.
+
 ## Future Updates
 
 - Support for downloading deferred rendering, user-downloaded and automated installation. 
