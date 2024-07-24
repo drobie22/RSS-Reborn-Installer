@@ -11,7 +11,7 @@
 ; ...but it works
 
 #define MyAppName "RSS Reborn Installer"
-#define MyAppVersion "1.1.2"
+#define MyAppVersion "1.1.3"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "drobie22/RSS-Reborn-Installer"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
@@ -2929,9 +2929,19 @@ begin
     CheckAndAddFolder('RSSVE-Textures', ModList, MissingMods, GameDataPath);
     CheckAndAddFolder('Scatterer', ModList, MissingMods, GameDataPath);
     CheckAndAddFolder('EnvironmentalVisualEnhancements', ModList, MissingMods, GameDataPath);
+    CheckAndAddFolder('00_Sun', ModList, MissingMods, TexturesDIr);
+    CheckAndAddFolder('01_Mercury', ModList, MissingMods, TexturesDIr);
+    CheckAndAddFolder('02_Venus', ModList, MissingMods, TexturesDIr);
     CheckAndAddFolder('03_Earth', ModList, MissingMods, TexturesDIr);
     CheckAndAddFolder('03-01_Moon', ModList, MissingMods, TexturesDIr);
     CheckAndAddFolder('04_Mars', ModList, MissingMods, TexturesDIr);
+    CheckAndAddFolder('05_Jupiter', ModList, MissingMods, TexturesDIr);
+    CheckAndAddFolder('06_Saturn', ModList, MissingMods, TexturesDIr);
+    CheckAndAddFolder('07_Uranus', ModList, MissingMods, TexturesDIr);
+    CheckAndAddFolder('08_Neptune', ModList, MissingMods, TexturesDIr);
+    CheckAndAddFolder('09-01_Vesta', ModList, MissingMods, TexturesDIr);
+    CheckAndAddFolder('09-02_Ceres', ModList, MissingMods, TexturesDIr);
+    CheckAndAddFolder('10-01_Pluto', ModList, MissingMods, TexturesDIr);
 
     // Log the complete mod list
     Log('Installed mods in GameData folder:');
@@ -2955,12 +2965,21 @@ end;
 procedure CopySetupLog;
 var
   LogFileName, SourceLogPath, DestLogPath: string;
-  KSPLogDir: string;
+  KSPLogDir, KSPLogs: string;
 begin
   // Define the KSP log directory
+  KSPLogs := KSP_DIR + '\Logs';
   KSPLogDir := KSP_DIR + '\Logs\RSSRebornInstallerLogs';
 
   // Create the directory if it doesn't exist
+    if not DirExists(KSPLogs) then
+  begin
+    if not CreateDir(KSPLogs) then
+    begin
+      Log('Failed to create log directory: ' + KSPLogs);
+      Exit;
+    end;
+  end;
   if not DirExists(KSPLogDir) then
   begin
     if not CreateDir(KSPLogDir) then
