@@ -1,7 +1,7 @@
 ---
 name: Bug report
-about: '"I''ve found a problem that I can''t solve on my own"'
-title: "***INSERT ISSUE TITLE HERE***"
+about: '"I''ve found a problem that I can''t solve on my own."'
+title: ''
 labels: bug
 assignees: drobie22
 
@@ -14,4 +14,4 @@ A clear and concise description of what the bug is.
 Please see Repo home page for instructions on how to find your latest log. 
 
 **Add Label**
-Please add a label to best categorize your issue. Default is `Bug`
+Please add a label to best categorize your issue. Default is `Bug`.
