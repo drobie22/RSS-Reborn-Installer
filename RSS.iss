@@ -1854,11 +1854,25 @@ begin
     end;
   end;
 
-  // RSSVE-Configs 
+  // RSSVE-Configs (if using blackrack's)
+  if RaymarchedVolumetricsCheckbox.Checked then
+  begin
   AddToDownloadList('RSS-Reborn/RSSVE-Configs', '', (DownloadsDir + '\RSSVE_Configs.7z'), False);
+  end
+  else
+  begin
+    Log('Skipping RSSVE Configs');
+  end;
 
-  // RSSVE-Textures
+  // RSSVE-Textures (if using blackrack's)
+  if RaymarchedVolumetricsCheckbox.Checked then
+  begin
   AddToDownloadList('RSS-Reborn/RSSVE-Textures', '', (DownloadsDir + '\RSSVE_Textures.7z'), False);
+  end
+  else
+  begin
+    Log('Skipping RSSVE Textures');
+  end;
 
   // Scatterer (if not using Blackrack's)
   if not RaymarchedVolumetricsCheckbox.Checked then
@@ -2952,8 +2966,6 @@ begin
     CheckAndAddFolder('RSS-Configs', ModList, MissingMods, GameDataPath);
     CheckAndAddFolder('RSS-Terrain', ModList, MissingMods, GameDataPath);
     CheckAndAddFolder('RSS-Textures', ModList, MissingMods, GameDataPath);
-    CheckAndAddFolder('RSSVE-Configs', ModList, MissingMods, GameDataPath);
-    CheckAndAddFolder('RSSVE-Textures', ModList, MissingMods, GameDataPath);
     CheckAndAddFolder('Scatterer', ModList, MissingMods, GameDataPath);
     CheckAndAddFolder('EnvironmentalVisualEnhancements', ModList, MissingMods, GameDataPath);
     CheckAndAddFolder('00_Sun', ModList, MissingMods, TexturesDIr);
@@ -2969,6 +2981,16 @@ begin
     CheckAndAddFolder('09-01_Vesta', ModList, MissingMods, TexturesDIr);
     CheckAndAddFolder('09-02_Ceres', ModList, MissingMods, TexturesDIr);
     CheckAndAddFolder('10-01_Pluto', ModList, MissingMods, TexturesDIr);
+
+    if RaymarchedVolumetricsCheckbox.Checked then
+    begin
+      CheckAndAddFolder('RSSVE-Configs', ModList, MissingMods, GameDataPath);
+      CheckAndAddFolder('RSSVE-Textures', ModList, MissingMods, GameDataPath);
+    end
+    else
+    begin
+      CheckAndAddFolder('RSSVE', ModList, MissingMods, GameDataPath);
+    end;
 
     // Log the complete mod list
     Log('Installed mods in GameData folder:');
