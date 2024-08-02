@@ -9,6 +9,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 - Downloads and installs the RSS Reborn mod and its dependencies to a game directory you choose. 
 - Provides options to select different resolutions for textures.
 - Optionally can include Blackrack's Volumetric Clouds (EVE and Scatterer, which you must still download from Patreon).
+  - If not selected, it will default to a previously working RSSVE. If this is your case, Please make sure RSSVE works before using the installer!
 
 ## Requirements
 
