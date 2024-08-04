@@ -86,6 +86,7 @@ var
   FileBrowseButton: TButton;
   FileLabel: TLabel;
 	DownloadPage: TOutputProgressWizardPage;
+  IndividualProgressBar: TNewProgressBar;
 	ExtractPage: TOutputProgressWizardPage;
 	MergePage: TOutputProgressWizardPage;
 	LatestReleaseAssetsJSON: string;
@@ -168,11 +169,16 @@ end;
 
 procedure InitializeArrayLengths;
 // Sets the lengths of arrays to prepare for storing data.
+var
+  I: Integer;
+
 begin
   // Set the lengths of the arrays
-  SetLength(Sizes, 12);
-  SetLength(SizeLabelList, 12);
-  SetLength(SizesList, 12);
+  SetLength(Sizes, 13);
+  SetLength(SizeLabelList, 13);
+  SetLength(SizesList, 13);
+  for I := 0 to High(SizesList) do
+    SizesList[I] := TStringList.Create;
 end;
 
 procedure InitializeRobocopyLogs;
@@ -346,7 +352,50 @@ function FormatSize(SizeInBytes: Integer): string;
 begin
   Result := IntToStr(Round(SizeInBytes / 1048576)) + ' MB'; 
 end;
-	
+
+function ParseSize(SizeStr: String): Int64;
+var
+  SizeValue: Double;
+  UnitStr: String;
+  PosSpace: Integer;
+begin
+  // Remove prefix if present
+  if Pos('Total Size: ', SizeStr) = 1 then
+    Delete(SizeStr, 1, Length('Total Size: '));
+
+  PosSpace := Pos(' ', SizeStr);
+  if PosSpace > 0 then
+  begin
+    try
+      SizeValue := StrToFloat(Trim(Copy(SizeStr, 1, PosSpace - 1)));
+    except
+      // Handle all exceptions here
+      Result := 0;
+      Log('Error converting size value for size string: ' + SizeStr);
+      Exit;
+    end;
+    
+    UnitStr := Trim(Copy(SizeStr, PosSpace + 1, Length(SizeStr) - PosSpace));
+    
+    if UnitStr = 'Bytes' then
+      Result := Round(SizeValue)
+    else if UnitStr = 'KB' then
+      Result := Round(SizeValue * 1024)
+    else if UnitStr = 'MB' then
+      Result := Round(SizeValue * 1048576)
+    else
+    begin
+      Log('Unknown unit: ' + UnitStr + ' for size string: ' + SizeStr);
+      Result := 0; // Unknown unit
+    end;
+  end
+  else
+  begin
+    Log('Invalid size string: ' + SizeStr);
+    Result := 0; // Invalid size string
+  end;
+end;
+
 function IsDirectoryEmpty(DirPath: string): Boolean;
 // Checks to see if the given direcory contains files
 var
@@ -1167,17 +1216,22 @@ begin
 end;
 
 procedure UpdateSizeLabel(ComboBoxTag: Integer);
-// Updates the label showing the total size of selected resolutions.
+var
+  SizeInBytes: Int64;
+  SizeStr: string;
 begin
   if ComboBoxTag < Length(SizeLabelList) then
   begin
     if Assigned(SizeLabelList[ComboBoxTag]) then
     begin
-      SizeLabelList[ComboBoxTag].Caption := Format('Total Size: %d MB', [Sizes[ComboBoxTag] div (1024 * 1024)]);
-    end
-    else
-    begin
-      Log(Format('SizeLabelList[%d] is not assigned (nil).', [ComboBoxTag]));
+      SizeInBytes := StrToInt64Def(SizesList[ComboBoxTag][0], 0);
+      if SizeInBytes < 1024 then
+        SizeStr := Format('%d Bytes', [SizeInBytes])
+      else if SizeInBytes < 1048576 then
+        SizeStr := Format('%.2f KB', [SizeInBytes / 1024.0])
+      else
+        SizeStr := Format('%.2f MB', [SizeInBytes / 1048576.0]);
+      SizeLabelList[ComboBoxTag].Caption := 'Total Size: ' + SizeStr;
     end;
   end;
 end;
@@ -1333,23 +1387,11 @@ begin
         Break;
     end;
 		
-		// Add "None" option to the ComboBox
-    ComboBox.Items.Add('None');
+		ComboBox.Items.Add('None');
     Sizes.Add('0');
 
-    // Check if the ComboBox is empty except for "None"
-    if ComboBox.Items.Count = 1 then
-    begin
-      ComboBox.ItemIndex := 0;
-      Log('No assets found for ' + BodyRepos[RepoIndex] + '. Added "None" option.');
-      NoAssetsFound := True;
-			BodiesWithNoAssets.Add(ExtractBodyName(BodyRepos[RepoIndex]));
-    end
-    else
-    begin
-      ComboBox.ItemIndex := 0;
-      UpdateSizeLabel(ComboBox.Tag);
-    end;
+    ComboBox.ItemIndex := 0;
+    UpdateSizeLabel(ComboBox.Tag);
 
     // Show a checkbox if scaled assets are available
     if ScaledAvailable then
@@ -1384,7 +1426,12 @@ begin
         if (ComboBox.ItemIndex >= 0) and (ComboBox.ItemIndex < SizesList[Index].Count) then
         begin
           SizeInBytes := StrToInt64Def(SizesList[Index][ComboBox.ItemIndex], 0);
-          SizeStr := 'Total Size: ' + IntToStr(SizeInBytes div 1048576) + ' MB';
+          if SizeInBytes < 1024 then
+            SizeStr := 'Total Size: ' + Format('%d Bytes', [SizeInBytes])
+          else if SizeInBytes < 1048576 then
+            SizeStr := 'Total Size: ' + Format('%.2f KB', [SizeInBytes / 1024.0])
+          else
+            SizeStr := 'Total Size: ' + Format('%.2f MB', [SizeInBytes / 1048576.0]);
           if (Index >= 0) and (Index < Length(SizeLabelList)) and Assigned(SizeLabelList[Index]) then
           begin
             SizeLabelList[Index].Caption := SizeStr;
@@ -1453,11 +1500,11 @@ var
   ComboBox: TComboBox;
   BodyLabel, VersionLabel, SizeLabel: TLabel;
   Page: TWizardPage;
-  PageHeight: Integer;
+  PageHeight, PageWidth: Integer;
 begin
   Log('Initializing wizard');
 
-  InitializeConstants
+  InitializeConstants;
   InitializeVariables;
 	InitializeArrayLengths;
   InitializeBodyRepos;
@@ -1540,9 +1587,18 @@ begin
   CurrentFileLabel := TNewStaticText.Create(DownloadPage);
   CurrentFileLabel.Parent := DownloadPage.Surface;
   CurrentFileLabel.Left := ScaleX(8);
-  CurrentFileLabel.Top := ScaleY(70);
+  CurrentFileLabel.Top := ScaleY(90);
   CurrentFileLabel.Width := DownloadPage.SurfaceWidth - ScaleX(16);
   CurrentFileLabel.Caption := 'Initializing download...';
+
+  IndividualProgressBar := TNewProgressBar.Create(DownloadPage);
+  IndividualProgressBar.Parent := DownloadPage.Surface;
+  IndividualProgressBar.Left := ScaleX(0);
+  IndividualProgressBar.Top := ScaleY(70);
+  IndividualProgressBar.Width := WizardForm.ClientWidth;
+  IndividualProgressBar.Height := ScaleY(16);
+  IndividualProgressBar.Position := 0;
+  IndividualProgressBar.Max := 100;
 	
 	// Extraction Progress Bar Page 
 	ExtractPage := CreateOutputProgressPage('Extracting Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
@@ -1562,8 +1618,9 @@ begin
   CurrentFileLabelM.Width := MergePage.SurfaceWidth - ScaleX(16);
   CurrentFileLabelM.Caption := 'Initializing Merging...';
 	
+  // Wizard Window Dimensions
   WizardForm.ClientHeight := WizardForm.ClientHeight + ScaleY(25);
-  WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(0);
+  WizardForm.ClientWidth := WizardForm.ClientWidth + ScaleX(15);
 
   SetLength(ResolutionCombos, Length(BodyRepos));
   SetLength(SizesList, Length(BodyRepos));
@@ -1572,6 +1629,7 @@ begin
   SetLength(ScaledAssetsAvailable, Length(BodyRepos));
 
   PageHeight := 0;
+  PageWidth := 0;
 
 	//Processing for Resolutions Page
   for I := 0 to High(BodyRepos) do
@@ -1624,10 +1682,12 @@ begin
     else
       SizeLabel.Caption := 'Total Size: Unknown';
     SizeLabelList[I] := SizeLabel;
+    UpdateSizeLabel(I);
 
     Log('Size label for ' + BodyRepos[I] + ' initialized: ' + SizeLabel.Caption);
 
     PageHeight := PageHeight + 25;
+    PageWidth := PageWidth + 200;
   end;
 
   WizardForm.Repaint;
@@ -1830,12 +1890,12 @@ var
 begin
   Log('InitializeDownloadList called');
   
+  // RSS-Configs
+  AddToDownloadList('RSS-Reborn/RSS-Configs', '', (DownloadsDir + '\RSS_Configs.7z'), False);
+
   // RSS-Terrain
   AddToDownloadList('RSS-Reborn/RSS-Terrain', '', (DownloadsDir + '\RSS_Terrain.7z'), False);
 
-  // RSS-Configs
-  AddToDownloadList('RSS-Reborn/RSS-Configs', '', (DownloadsDir + '\RSS_Configs.7z'), False);
-  
   // Kopernicus
   AddToDownloadList('ballisticfox/Kopernicus', '', (DownloadsDir + '\Kopernicus.7z'), False);
 
@@ -1963,7 +2023,7 @@ begin
   MoveCommand := Format('robocopy "%s" "%s" /MOVE /E /MT:16 /R:2 /W:5 /COPY:DAT', [SourceDir, DestDir]);
   ReverseCommand := Format('robocopy "%s" "%s" /MOVE /E /MT:16 /R:2 /W:5 /COPY:DAT', [DestDir, SourceDir]);
 
-   // Check if SourceDir is empty (aka C:\ drive base folder)
+  // Check if SourceDir is empty 
   if SourceDir = '' then
   begin
     Log('Error: SourceDir is empty. Aborting installation.');
@@ -1971,7 +2031,7 @@ begin
     Abort; 
   end;
 
-   // Check if DestDir is empty (aka C:\ drive base folder)
+  // Check if DestDir is empty 
   if DestDir = '' then
   begin
     Log('Error: DestDir is empty. Aborting installation.');
