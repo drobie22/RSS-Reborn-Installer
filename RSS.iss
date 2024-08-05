@@ -18,24 +18,24 @@
 
 [Setup]
 AppName={#MyAppName}
-AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
+AppVersion={#MyAppVersion}
+Compression=lzma
 DefaultDirName={autopf}\RSS-Reborn-Installer
 DefaultGroupName=RSS-Reborn-Installer
 DisableDirPage=yes 
+DisableWelcomePage=no
 OutputBaseFilename=RSSRebornInstaller
+PrivilegesRequired=admin
 SetupLogging=yes
-Compression=lzma
 SolidCompression=yes
 WizardImageFile=images\backgroundmoon.bmp
 WizardImageStretch=no
 WizardSmallImageFile=images\icon.bmp
 WizardStyle=modern
-DisableWelcomePage=no
-PrivilegesRequired=admin
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -53,73 +53,81 @@ Source: "itdownload.dll"; DestDir: "{app}"; Flags: dontcopy;
 [Code]
 const
   GitHubAPI = 'https://api.github.com/repos/';
+  ITD_DLL = 'itdownload.dll';
   MAX_PATH = 260;
-	RequiredSpace = 50000000000;
+  MOVEFILE_COPY_ALLOWED = $2;
+  MOVEFILE_REPLACE_EXISTING = $1; 
+  RequiredSpace = 50000000000;
   RSSConfigsRepo = 'RSS-Reborn/RSS-Configs';
   RSSTexturesRepo = 'RSS-Reborn/RSS-Terrain';
   S_OK = 0;
-  URLMON_DLL = 'urlmon.dll';
-	SECONDS_IN_A_DAY = 86400;
+  SECONDS_IN_A_DAY = 86400;
   SECONDS_IN_AN_HOUR = 3600;
   SECONDS_IN_A_MINUTE = 60;
-  MOVEFILE_COPY_ALLOWED = $2;
-  MOVEFILE_REPLACE_EXISTING = $1;	
-  ITD_DLL = 'itdownload.dll';
+  URLMON_DLL = 'urlmon.dll';
 	
 var
-  AssetDataList: array of TStringList;
-  BodyRepos: array[0..12] of string;
-  BodySizes: array of string;	
-	BodyVersions: array of string;
-	BodiesWithNoAssets: TStringList;
-	StoredReleaseInfo: TStringList;
-	CurrentFileLabel: TNewStaticText;
-	CurrentFileLabelE: TNewStaticText;
-	CurrentFileLabelM: TNewStaticText;
-  DownloadList: TStringList;
-  DownloadsDir: string;
-	DownloadLogs: TStringList;
-	ExtractionLogs: TStringList;
-	RaymarchedVolumetricsCheckbox: TNewCheckBox;
-  EVEdownloaded: Boolean;
-	GitHubCount: TStringList;
-	KSP_DIR: string;
-  RAYVOL_DIR: string;
-  KSPDirPage: TInputDirWizardPage;
-  FileEdit: TEdit;
-  FileBrowseButton: TButton;
-  FileLabel: TLabel;
-	DownloadPage: TOutputProgressWizardPage;
-  IndividualProgressBar: TNewProgressBar;
-	ExtractPage: TOutputProgressWizardPage;
-	MergePage: TOutputProgressWizardPage;
-	LatestReleaseAssetsJSON: string;
-	LatestReleaseJSON: string;
-  LatestReleaseVersion: string;
-	MyAccessToken: string;
-	NoAssetsFound: Boolean;
-	ParallaxVersion: string;
-  ResolutionCombos: array of TComboBox;
-  RP1Checkbox: TNewCheckBox;
-	Sizes: array of Int64;
-  SizesList: array of TStringList;
-	SizeLabelList: array of TLabel;
-  ScattererDownloaded: Boolean;
-	UserCanceled: Boolean;
-  wpSelectResolutions: Integer;
-  ReleaseStore: TStringList;
-  AssetsStore: TStringList;
-  SevenZipPath: string;
-  WinRARPath: string;
+  AAinKSPCheckbox: TCheckBox;
+  AddTUFXCheckbox: TCheckBox;
+  AppExeName: String;
   AppName: String;
-  AppVersion: String;
   AppPublisher: String;
   AppURL: String;
-  AppExeName: String;
-  RobocopyCommands: TStringList;
+  AppVersion: String;
+  AssetDataList: array of TStringList;
+  AssetsStore: TStringList;
+  BodiesWithNoAssets: TStringList;
+  BodyRepos: array[0..12] of string;
+  BodySizes: array of string;
+  BodyVersions: array of string;
+  CommunitySettings: TCheckBox;
+  CurrentFileLabel: TNewStaticText;
+  CurrentFileLabelE: TNewStaticText;
+  CurrentFileLabelM: TNewStaticText;
+  DownloadList: TStringList;
+  DownloadLogs: TStringList;
+  DownloadPage: TOutputProgressWizardPage;
+  DownloadsDir: string;
+  EVEdownloaded: Boolean;
+  ExtractPage: TOutputProgressWizardPage;
+  ExtractionLogs: TStringList;
+  FileBrowseButton: TButton;
+  FileEdit: TEdit;
+  FileLabel: TLabel;
+  GitHubCount: TStringList;
+  IndividualProgressBar: TNewProgressBar;
+  KSPDirPage: TInputDirWizardPage;
+  KSP_DIR: string;
+  LatestReleaseAssetsJSON: string;
+  LatestReleaseJSON: string;
+  LatestReleaseVersion: string;
+  LineSeparator: TBevel;
+  MergePage: TOutputProgressWizardPage;
+  MyAccessToken: string;
+  NoAssetsFound: Boolean;
+  Note1: TLabel;
+  Note2: TLabel;
+  ParallaxVersion: string;
+  RAYVOL_DIR: string;
+  RP1Checkbox: TNewCheckBox;
+  RaymarchedVolumetricsCheckbox: TNewCheckBox;
+  ReflectionQualityCheckbox: TCheckBox;
+  ReflectionTextureCheckbox: TCheckBox;
+  ReleaseStore: TStringList;
+  ResolutionCombos: array of TComboBox;
   ReverseRobocopyCommands: TStringList;
-  ScaledCheckboxes: array of TCheckBox;
+  RobocopyCommands: TStringList;
   ScaledAssetsAvailable: array of Boolean;
+  ScaledCheckboxes: array of TCheckBox;
+  ScattererDownloaded: Boolean;
+  SevenZipPath: string;
+  SizeLabelList: array of TLabel;
+  Sizes: array of Int64;
+  SizesList: array of TStringList;
+  StoredReleaseInfo: TStringList;
+  UserCanceled: Boolean;
+  WinRARPath: string;
+  wpSelectResolutions: Integer;
 
 type
   TResolutionPages = array of TWizardPage;
@@ -1513,6 +1521,29 @@ begin
   end;
 end;
 
+// Event handler for CommunitySettings checkbox
+procedure CommunitySettingsClick(Sender: TObject);
+begin
+  AddTUFXCheckbox.Enabled := CommunitySettings.Checked;
+  AddTUFXCheckbox.Checked := False; 
+  Note1.Enabled := CommunitySettings.Checked;
+  Note2.Enabled := CommunitySettings.Checked;
+  ReflectionQualityCheckbox.Enabled := CommunitySettings.Checked;
+  ReflectionQualityCheckbox.Checked := False; 
+  ReflectionTextureCheckbox.Enabled := CommunitySettings.Checked;
+  ReflectionTextureCheckbox.Checked := False; 
+  AAinKSPCheckbox.Enabled := CommunitySettings.Checked;
+  AAinKSPCheckbox.Checked := False; 
+end;
+
+procedure WizardFormResize(Sender: TObject);
+begin
+  FileEdit.Width := WizardForm.ClientWidth - FileBrowseButton.Width - FileEdit.Left - 90; 
+  FileBrowseButton.Left := FileEdit.Left + FileEdit.Width + 10;
+  LineSeparator.Width := WizardForm.ClientWidth - KSPDirPage.Edits[0].Left * 2;
+  CommunitySettings.Width := WizardForm.ClientWidth - KSPDirPage.Edits[0].Left * 2;
+end;
+
 procedure InitializeWizard;
 // Initialize the UI
 var
@@ -1546,7 +1577,7 @@ begin
 	// Checkbox on welcome page
   RP1Checkbox := TNewCheckBox.Create(WizardForm);
   RP1Checkbox.Parent := WizardForm.WelcomePage;
-  RP1Checkbox.Left := ScaleX(18);
+  RP1Checkbox.Left := ScaleX(175);
   RP1Checkbox.Top := ScaleY(175);
   RP1Checkbox.Width := WizardForm.ClientWidth - ScaleX(36);
   RP1Checkbox.Height := ScaleY(40);
@@ -1558,16 +1589,20 @@ begin
 	// Checkbox on welcome page
   RaymarchedVolumetricsCheckbox := TNewCheckBox.Create(WizardForm);
   RaymarchedVolumetricsCheckbox.Parent := WizardForm.WelcomePage;
-  RaymarchedVolumetricsCheckbox.Left := ScaleX(18);
+  RaymarchedVolumetricsCheckbox.Left := ScaleX(175);
   RaymarchedVolumetricsCheckbox.Top := ScaleY(215);
   RaymarchedVolumetricsCheckbox.Width := WizardForm.ClientWidth - ScaleX(36);
   RaymarchedVolumetricsCheckbox.Height := ScaleY(40);
   RaymarchedVolumetricsCheckbox.Caption := '(Optional) I am using Blackrack''s Volumetric Clouds.';
   RaymarchedVolumetricsCheckbox.Checked := False;
   Log('EVE and Scatterer download confirmation checkbox created');
-  
+
+	// Resolution input page
+  Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
+  wpSelectResolutions := Page.ID;
+
   // Create the KSP directory input page
-  KSPDirPage := CreateInputDirPage(wpWelcome, 'KSP Directory', 'Select the KSP directory', 'Please select the directory where Kerbal Space Program is installed.', False, '');
+  KSPDirPage := CreateInputDirPage(wpWelcome, 'KSP Settings', 'Select the KSP directory, and choose Settings', 'Please select the directory where Kerbal Space Program is installed.', False, '');
   KSPDirPage.Add('KSP Directory');
   KSPDirPage.Values[0] := 'C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program';
 
@@ -1584,7 +1619,7 @@ begin
   FileEdit.Parent := KSPDirPage.Surface;
   FileEdit.Top := FileLabel.Top + FileLabel.Height + 5;
   FileEdit.Left := FileLabel.Left;
-  FileEdit.Width := KSPDirPage.Edits[0].Width + 100;
+  FileEdit.Width := WizardForm.ClientWidth - FileEdit.Left - 20;
   FileEdit.Visible := False;
 
   // Create the file browse button
@@ -1598,10 +1633,74 @@ begin
 
   FileBrowseButton.OnClick := @BrowseForFile;
   RaymarchedVolumetricsCheckbox.OnClick := @RaymarchedVolumetricsCheckboxClick;
+  WizardForm.OnResize := @WizardFormResize;
 
-	// Resolution input page
-  Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
-  wpSelectResolutions := Page.ID;
+  // Create the line separator
+  LineSeparator := TBevel.Create(WizardForm);
+  LineSeparator.Parent := KSPDirPage.Surface;
+  LineSeparator.Shape := bsTopLine;
+  LineSeparator.Left := KSPDirPage.Edits[0].Left;
+  LineSeparator.Top := FileBrowseButton.Top + FileBrowseButton.Height + 10;
+  LineSeparator.Width := WizardForm.ClientWidth - KSPDirPage.Edits[0].Left * 2;
+  LineSeparator.Height := 2;
+
+  // Create and configure the first checkbox
+  CommunitySettings := TCheckBox.Create(WizardForm);
+  CommunitySettings.Parent := KSPDirPage.Surface;
+  CommunitySettings.Left := KSPDirPage.Edits[0].Left;
+  CommunitySettings.Top := LineSeparator.Top + LineSeparator.Height + 10;
+  CommunitySettings.Width := WizardForm.ClientWidth - KSPDirPage.Edits[0].Left * 2;
+  CommunitySettings.Caption := 'Enable Community Visual Settings';
+  CommunitySettings.Checked := False; 
+  CommunitySettings.OnClick := @CommunitySettingsClick;
+
+  AddTUFXCheckbox := TCheckBox.Create(WizardForm);
+  AddTUFXCheckbox.Parent := KSPDirPage.Surface;
+  AddTUFXCheckbox.Left := CommunitySettings.Left + 25;
+  AddTUFXCheckbox.Top := CommunitySettings.Top + CommunitySettings.Height + 10;
+  AddTUFXCheckbox.Width := CommunitySettings.Width;
+  AddTUFXCheckbox.Caption := 'Add TUFX to installation';
+  AddTUFXCheckbox.Enabled := False; 
+
+  Note1 := TLabel.Create(WizardForm);
+  Note1.Parent := KSPDirPage.Surface;
+  Note1.Left := AddTUFXCheckbox.Left + 20;
+  Note1.Top := AddTUFXCheckbox.Top + AddTUFXCheckbox.Height + 5;
+  Note1.Caption := '    - Needed for Blackrack\''s profile and (easy) anti aliasing.';
+  Note1.AutoSize := True;
+  Note1.Enabled := False;
+
+  Note2 := TLabel.Create(WizardForm);
+  Note2.Parent := KSPDirPage.Surface;
+  Note2.Left := AddTUFXCheckbox.Left + 20;
+  Note2.Top := Note1.Top + Note1.Height + 5;
+  Note2.Caption := '    - SMAA enabled.';
+  Note2.AutoSize := True;
+  Note2.Enabled := False;
+
+  ReflectionQualityCheckbox := TCheckBox.Create(WizardForm);
+  ReflectionQualityCheckbox.Parent := KSPDirPage.Surface;
+  ReflectionQualityCheckbox.Left := AddTUFXCheckbox.Left;
+  ReflectionQualityCheckbox.Top := Note2.Top + Note2.Height + 10;
+  ReflectionQualityCheckbox.Width := AddTUFXCheckbox.Width;
+  ReflectionQualityCheckbox.Caption := 'Reflection Quality -> Low';
+  ReflectionQualityCheckbox.Enabled := False;
+
+  ReflectionTextureCheckbox := TCheckBox.Create(WizardForm);
+  ReflectionTextureCheckbox.Parent := KSPDirPage.Surface;
+  ReflectionTextureCheckbox.Left := ReflectionQualityCheckbox.Left;
+  ReflectionTextureCheckbox.Top := ReflectionQualityCheckbox.Top + ReflectionQualityCheckbox.Height + 10;
+  ReflectionTextureCheckbox.Width := ReflectionQualityCheckbox.Width;
+  ReflectionTextureCheckbox.Caption := 'Reflection Texture -> 128';
+  ReflectionTextureCheckbox.Enabled := False;
+
+  AAinKSPCheckbox := TCheckBox.Create(WizardForm);
+  AAinKSPCheckbox.Parent := KSPDirPage.Surface;
+  AAinKSPCheckbox.Left := ReflectionTextureCheckbox.Left;
+  AAinKSPCheckbox.Top := ReflectionTextureCheckbox.Top + ReflectionTextureCheckbox.Height + 10;
+  AAinKSPCheckbox.Width := ReflectionTextureCheckbox.Width;
+  AAinKSPCheckbox.Caption := 'AA in KSP -> off';
+  AAinKSPCheckbox.Enabled := False; 
 
 	// Download Progress Bar Page
   DownloadPage := CreateOutputProgressPage('Downloading Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
