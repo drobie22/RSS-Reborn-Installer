@@ -2779,58 +2779,24 @@ begin
   end;
 end;
 
-procedure DownloadFileWithProgress(const URL, DestFile: String);
-var
-  Results: Integer;
-begin
-  // Initialize the downloader
-  ITD_Init;
-
-  // Clear any previously added files
-  ITD_ClearFiles;
-
-  // Add the file to the download queue
-  ITD_AddFile(URL, DestFile);
-
-  // Perform the download
-  Results := ITD_DownloadFiles;
-
-  // Check the result of the download
-  if Results = ITDERR_SUCCESS then
-  begin
-    Log('Download completed: ' + DestFile);
-  end
-  else
-  begin
-    // Detailed error logging
-    Log('Download failed: ' + URL + ' with error code: ' + IntToStr(Results));
-    if Results = ITDERR_ERROR then
-    begin
-      Log('Error indicates a problem during download. Please check the URL and destination path.');
-    end;
-  end;
-end;
-
+function URLDownloadToFile(Caller: Integer; URL: PAnsiChar; FileName: PAnsiChar; Reserved: Integer; StatusCB: Integer): Integer;
+  external 'URLDownloadToFileA@urlmon.dll stdcall';
 
 procedure DownloadAllFiles;
 // The full procedure that executes the download list
 var
   URL, Dest, FileName, DownloadItem: String;
   I: Integer;
-  TotalSize: Int64;
-  SizeStr: String;
+  DownloadResult: HRESULT;
 begin
   Log('========================================================');
   DownloadPage.SetProgress(0, DownloadList.Count);
-  SetLength(SizeLabelList, DownloadList.Count);
 
   // List Downloads
   for I := 0 to DownloadList.Count - 1 do
   begin
     Log(DownloadList[I]);
   end;
-
-  Log('========================================================');
 
   for I := 0 to DownloadList.Count - 1 do
   begin
@@ -2843,32 +2809,47 @@ begin
 
     // Ensure the correct destination path
     Dest := DownloadsDir + '\' + FileName;
+    
+    CurrentFileLabel.Caption := 'Downloading: ' + FileName;
+    WizardForm.Update;
 
-    // Get the total size for the current download item from the corresponding SizeLabelList
-    if (I < Length(SizeLabelList)) and Assigned(SizeLabelList[I]) then
+    Log('Calling URLDownloadToFile with URL: ' + URL + ' and Dest: ' + Dest);
+    
+    DownloadResult := URLDownloadToFile(0, PAnsiChar(URL), PAnsiChar(Dest), 0, 0);
+    GitHubCount.Add('Github Call');
+
+    if DownloadResult = S_OK then
     begin
-      SizeStr := SizeLabelList[I].Caption;
-      Log('Size of download = ' + SizeStr);
-      TotalSize := ParseSize(SizeStr); 
-
-      CurrentFileLabel.Caption := 'Downloading: ' + FileName;
-      WizardForm.Update;
-
-      Log('Calling download function with URL: ' + URL);
-      Log('Download Function saves asset here: ' + Dest);
-
-      DownloadFileWithProgress(URL, Dest);
-      GitHubCount.Add('Github Call');
-      Log('========================================================');
+      Log('Successfully downloaded ' + URL + ' to ' + Dest);
+      DownloadLogs.Add('Successfully downloaded ' + URL + ' to ' + Dest);
     end
     else
     begin
-      Log('Error: Index ' + IntToStr(I) + ' out of range for SizeLabelList.');
-      MsgBox('Error: Index out of range while preparing download. Please check the logs for details.', mbError, MB_OK);
+      case DownloadResult of
+        -2146697208: Log('Error -2146697208 (INET_E_DOWNLOAD_FAILURE): The download was blocked due to security reasons.');
+        -2146697211: Log('Error -2146697211 (INET_E_RESOURCE_NOT_FOUND): The server could not be found or there was a network connectivity issue.');
+        -2146697207: Log('Error -2146697207 (INET_E_DATA_NOT_AVAILABLE): No data is available for the requested resource.');
+        -2146697210: Log('Error -2146697210 (INET_E_INVALID_REQUEST): The server returned an invalid or unrecognized response.');
+        -2146697201: Log('Error -2146697201 (INET_E_DOWNLOAD_BLOCKED): The request was invalid due to a problem with the URL.');
+        -2146697209: Log('Error -2146697209 (INET_E_OBJECT_NOT_FOUND): The server or proxy returned an invalid or unrecognized response.');
+        -2146697213: Log('Error -2146697213 (INET_E_SECURITY_PROBLEM): A security problem occurred. Make sure SSL and TLS settings are correct.');
+        -2146697214: Log('Error -2146697214 (INET_E_CANNOT_CONNECT): The request was forbidden by the server.');
+        -2146697205: Log('Error -2146697205 (INET_E_REDIRECT_FAILED): The redirect request failed.');
+        -2146697206: Log('Error -2146697206 (INET_E_REDIRECT_TO_DIR): The redirection failed because the target URL is a directory.');
+        -2146697212: Log('Error -2146697212 (INET_E_QUERYOPTION_UNKNOWN): The requested option is unknown.');
+        -2146697215: Log('Error -2146697215 (INET_E_AUTHENTICATION_REQUIRED): Authentication is required to access the resource.');
+        else
+        begin
+          Log('Error ' + IntToStr(DownloadResult) + ': Unknown error.');
+          DownloadLogs.Add('Failed to download ' + URL + ' with an unknown error code: ' + IntToStr(DownloadResult));
+          MsgBox('Failed to download ' + URL + ' with an unknown error code: ' + IntToStr(DownloadResult) + '. Please check the logs for more details.', mbError, MB_OK);
+        end;
+      end;
+      DownloadLogs.Add('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult));
+      MsgBox('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult) + '. Please check the logs for more details.', mbError, MB_OK);
       Exit;
     end;
   end;
-
   DownloadPage.SetProgress(DownloadList.Count, DownloadList.Count);
 end;
 
