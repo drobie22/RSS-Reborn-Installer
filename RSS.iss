@@ -11,7 +11,7 @@
 ; ...but it works
 
 #define MyAppName "RSS Reborn Installer"
-#define MyAppVersion "1.1.3"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "drobie22/RSS-Reborn-Installer"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
@@ -32,7 +32,7 @@ OutputBaseFilename=RSSRebornInstaller
 PrivilegesRequired=admin
 SetupLogging=yes
 SolidCompression=yes
-WizardImageFile=images\backgroundmoon.bmp
+WizardImageFile=images\Mars.bmp
 WizardImageStretch=no
 WizardSmallImageFile=images\icon.bmp
 WizardStyle=modern
@@ -888,7 +888,7 @@ begin
 end;
 
 procedure GetLatestReleaseHTTPInfo(Repo: string);
-// Main call to GitHub api
+// Main call to GitHub API
 var
   HttpCli: Variant;
   CombinedResponse: string;
@@ -919,19 +919,30 @@ begin
     if HttpCli.Status = 200 then
     begin
       CombinedResponse := HttpCli.ResponseText;
+
+      // Validate and log the response length
+      Log('Response received. Length: ' + IntToStr(Length(CombinedResponse)));
       if CombinedResponse = '' then
       begin
         Log('Empty response for latest release info');
         Exit;
       end;
 
+      // Store the full JSON response
       LatestReleaseJSON := CombinedResponse;
+      //Log('Full JSON Response: ' + LatestReleaseJSON);
 
-      // Parse the JSON response to extract necessary fields and assets
+      // Extract the tag name (version) from the response
       LatestReleaseVersion := ExtractJSONField(CombinedResponse, '"tag_name":"');
-      LatestReleaseAssetsJSON := ExtractJSONArray(CombinedResponse, '"assets":[');
+      if LatestReleaseVersion = '' then
+        Log('Warning: Could not extract "tag_name" from JSON.');
 
-      // Store the combined JSON responses
+      // Extract the assets array from the response
+      LatestReleaseAssetsJSON := ExtractJSONArray(CombinedResponse, '"assets":[');
+      if LatestReleaseAssetsJSON = '' then
+        Log('Warning: Could not extract "assets" array from JSON.');
+
+      // Store the combined JSON responses for future use
       StoreReleaseInfo(Repo, '', LatestReleaseJSON, LatestReleaseAssetsJSON);
     end
     else
@@ -1525,15 +1536,24 @@ end;
 procedure CommunitySettingsClick(Sender: TObject);
 begin
   AddTUFXCheckbox.Enabled := CommunitySettings.Checked;
-  AddTUFXCheckbox.Checked := False; 
   Note1.Enabled := CommunitySettings.Checked;
   Note2.Enabled := CommunitySettings.Checked;
   ReflectionQualityCheckbox.Enabled := CommunitySettings.Checked;
-  ReflectionQualityCheckbox.Checked := False; 
   ReflectionTextureCheckbox.Enabled := CommunitySettings.Checked;
-  ReflectionTextureCheckbox.Checked := False; 
   AAinKSPCheckbox.Enabled := CommunitySettings.Checked;
-  AAinKSPCheckbox.Checked := False; 
+
+  if not CommunitySettings.Checked then
+  begin
+    AddTUFXCheckbox.Checked := False; 
+    ReflectionQualityCheckbox.Checked := False; 
+    ReflectionTextureCheckbox.Checked := False; 
+    AAinKSPCheckbox.Checked := False; 
+    Log('Community Settings turned off - all related checkboxes unchecked');
+  end
+  else
+  begin
+    Log('Community Settings turned on');
+  end;
 end;
 
 procedure WizardFormResize(Sender: TObject);
@@ -1650,7 +1670,7 @@ begin
   CommunitySettings.Left := KSPDirPage.Edits[0].Left;
   CommunitySettings.Top := LineSeparator.Top + LineSeparator.Height + 10;
   CommunitySettings.Width := WizardForm.ClientWidth - KSPDirPage.Edits[0].Left * 2;
-  CommunitySettings.Caption := 'Enable Community Visual Settings';
+  CommunitySettings.Caption := 'Enable Recommended Community Visual Settings';
   CommunitySettings.Checked := False; 
   CommunitySettings.OnClick := @CommunitySettingsClick;
 
@@ -1666,7 +1686,7 @@ begin
   Note1.Parent := KSPDirPage.Surface;
   Note1.Left := AddTUFXCheckbox.Left + 20;
   Note1.Top := AddTUFXCheckbox.Top + AddTUFXCheckbox.Height + 5;
-  Note1.Caption := '    - Needed for Blackrack\''s profile and (easy) anti aliasing.';
+  Note1.Caption := '    - Needed for Blackrack''s profile and (easy) anti aliasing.';
   Note1.AutoSize := True;
   Note1.Enabled := False;
 
@@ -1864,64 +1884,123 @@ begin;
     Log('DownloadsDir directory does not exist:' + DownloadsDir);
 end;
 
-function GetRepoDownloadURLs(Repo, Resolution: string; IsScaled: Boolean): TStringList;
+function ExtractJSONString(const JSON: string; var CurrentPos: Integer): string;
 var
-  AssetName, BrowserDownloadURL: string;
-  I, J, StartPos: Integer;
-  ReleaseJSON, AssetsJSON: string;
+  StartPos, EndPos: Integer;
+begin
+  Result := '';
+  // Move CurrentPos to the start of the string (skip any whitespace or quotes)
+  while (CurrentPos <= Length(JSON)) and (JSON[CurrentPos] in [' ', '"']) do
+    Inc(CurrentPos);
+  
+  StartPos := CurrentPos;
+  
+  // Find the end of the string
+  while (CurrentPos <= Length(JSON)) and (JSON[CurrentPos] <> '"') do
+    Inc(CurrentPos);
+  
+  EndPos := CurrentPos;
+  
+  // Extract the string
+  if EndPos > StartPos then
+    Result := Copy(JSON, StartPos, EndPos - StartPos);
+  
+  Inc(CurrentPos);  // Move past the closing quote
+end;
+
+function GetRepoDownloadURLs(Repo, Resolution: String; IsScaled: Boolean): TStringList;
+var
+  JSONData, Key, AssetName, BrowserDownloadURL: String;
+  IsScaledStr: String;
+  AssetSectionStart, NameStart, NameEnd, UrlStart, UrlEnd: Integer;
 begin
   Result := TStringList.Create;
-  Log('GetRepoDownloadURLs is attempting to retrieve stored data for repository: ' + Repo + ' with Resolution: ' + Resolution);
+  
+  // Convert IsScaled boolean to string for logging
+  if IsScaled then
+    IsScaledStr := 'True'
+  else
+    IsScaledStr := 'False';
 
-  if GetStoredJSONForRepo(Repo, Resolution, ReleaseJSON, AssetsJSON) then
+  // Retrieve stored JSON for the repo if available, otherwise fetch from the web
+  if GetStoredJSONForRepo(Repo, Resolution, JSONData, Key) then
   begin
-    LatestReleaseAssetsJSON := AssetsJSON;
-    LatestReleaseJSON := ReleaseJSON;
-    Log('GetRepoDownloadURLs is using stored release info for ' + Repo);
+    Log('Using stored release info for repository: ' + Repo);
   end
   else
   begin
-    Log('No stored data found for ' + Repo + '. Fetching latest release info.');
+    Log('No stored data found for repository: ' + Repo + '. Fetching latest release info from the web.');
     GetLatestReleaseHTTPInfo(Repo);
-    StoreReleaseInfo(Repo, Resolution, LatestReleaseJSON, LatestReleaseAssetsJSON);
+    Log('Fetched latest release info. Storing data...');
+    StoreReleaseInfo(Repo, Resolution, JSONData, Key);
   end;
 
-  StartPos := 1;
-  while StartPos > 0 do
+  // Start JSON Parsing
+  Log('Starting JSON parsing.');
+
+  // Find the start of the assets section
+  AssetSectionStart := Pos('"assets":[', JSONData);
+  if AssetSectionStart = 0 then
   begin
-    I := PosEx('"name":"', LatestReleaseAssetsJSON, StartPos);
-    if I > 0 then
+    Log('Error: "assets" section not found in the JSON.');
+    Exit;
+  end;
+  
+  // Process each asset in the assets section
+  while True do
+  begin
+    // Find the start of the next asset object
+    NameStart := PosEx('"name":"', JSONData, AssetSectionStart);
+    if NameStart = 0 then
     begin
-      I := I + Length('"name":"');
-      J := FindNextQuote(LatestReleaseAssetsJSON, I);
-      if J > 0 then
+      Log('No more assets found in the JSON.');
+      Break;
+    end;
+    
+    NameStart := NameStart + Length('"name":"');
+    NameEnd := PosEx('"', JSONData, NameStart);
+    AssetName := Copy(JSONData, NameStart, NameEnd - NameStart);
+    Log('Found asset: ' + AssetName);
+
+    // Check if the asset matches the criteria
+    if (Resolution = '') or (ExtractResolution(AssetName) = Resolution) or 
+       (IsScaled and (Pos('scaled', LowerCase(AssetName)) > 0)) then
+    begin
+      //Log('Asset matches criteria (Resolution: ' + Resolution + ', IsScaled: ' + IsScaledStr + ').');
+
+      // Look for the "browser_download_url"
+      UrlStart := PosEx('"browser_download_url":"', JSONData, NameEnd);
+      if UrlStart > 0 then
       begin
-        AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
-        Log('Found asset: ' + AssetName);
-        
-        if (Resolution = '') or (ExtractResolution(AssetName) = Resolution) or (IsScaled and (Pos('scaled', LowerCase(AssetName)) > 0)) then
-        begin
-          I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
-          if I > 0 then
-          begin
-            I := I + Length('"browser_download_url":"');
-            J := FindNextQuote(LatestReleaseAssetsJSON, I);
-            if J > 0 then
-            begin
-              BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
-              Result.Add(BrowserDownloadURL);
-              //Log('Added download URL: ' + BrowserDownloadURL);
-            end;
-          end;
-        end;
-        StartPos := J + 1;
+        UrlStart := UrlStart + Length('"browser_download_url":"');
+        UrlEnd := PosEx('"', JSONData, UrlStart);
+        BrowserDownloadURL := Copy(JSONData, UrlStart, UrlEnd - UrlStart);
+
+        Log('Valid download URL found: ' + BrowserDownloadURL);
+        Result.Add(BrowserDownloadURL);
+      end
+      else
+      begin
+        Log('Error: "browser_download_url" not found for asset: ' + AssetName);
       end;
     end
     else
-      Break;
+    begin
+      Log('Asset does not match criteria and will be skipped.');
+    end;
+    
+    // Move to the next asset
+    AssetSectionStart := NameEnd;
   end;
 
-  Log('Completed retrieving download URLs for repository: ' + Repo);
+  if Result.Count = 0 then
+  begin
+    Log('No valid URLs were found or matched the criteria.');
+  end
+  else
+  begin
+    Log('Total URLs found: ' + IntToStr(Result.Count));
+  end;
 end;
 
 procedure AddToDownloadList(Repo, Resolution, DestFilePath: string; IncludeScaled: Boolean);
@@ -2058,6 +2137,17 @@ begin
   else
   begin
     Log('Skipping, using Blackrack''s Volumetrics');
+  end;
+
+  // TUFX
+  if AddTUFXCheckbox.Checked then
+  begin
+    AddToDownloadList('KSPModStewards/TUFX', '', (DownloadsDir + '\TUFX.zip'), False);
+    Log('TUFX will be downloaded and installed.');
+  end
+  else
+  begin
+    Log('Skipping TUFX Option as it is not selected.');
   end;
 
   // Download Parallax
@@ -2752,6 +2842,21 @@ begin
     Log('RSSVE directory will remain, no raymarched volumetrics.');
   end;
 
+  if AddTUFXCheckbox.Checked then
+  begin
+    if DirectoryExists(KSP_DIR + 'KSPModStewards/TUFX') then
+      if not DelTree(KSP_DIR + 'KSPModStewards/TUFX', True, True, True) then
+        Log('Failed to delete TUFX directory.')
+      else
+        Log('TUFX directory deleted.')
+    else
+      Log('TUFX directory does not exist.');
+  end
+  else
+  begin
+    Log('TUFX directory will remain, not selected by user.');
+  end;
+
   if DirectoryExists(KSP_DIR + '\GameData\RealSolarSystem') then
     if not DelTree(KSP_DIR + '\GameData\RealSolarSystem', True, True, True) then
       Log('Failed to delete RealSolarSystem directory.')
@@ -2895,6 +3000,13 @@ begin
   for I := 0 to DownloadList.Count - 1 do
   begin
     Log(DownloadList[I]);
+  end;
+
+  if DownloadList.Count = 0 then
+  begin
+  Log('No downloads found!');
+  MsgBox('Failed to queue URLs for download. Please submit an issue on GitHub with your log.', mbError, MB_OK);
+  abort
   end;
 
   for I := 0 to DownloadList.Count - 1 do
@@ -3156,6 +3268,11 @@ begin
     else
     begin
       CheckAndAddFolder('RSSVE', ModList, MissingMods, GameDataPath);
+    end;
+
+    if AddTUFXCheckbox.Checked then
+    begin
+      CheckAndAddFolder('TUFX', ModList, MissingMods, GameDataPath);
     end;
 
     // Log the complete mod list
