@@ -1732,7 +1732,7 @@ begin
   HQCloudsCheckbox.Left := AAinKSPCheckbox.Left;
   HQCloudsCheckbox.Top := AAinKSPCheckbox.Top + AAinKSPCheckbox.Height + 10;
   HQCloudsCheckbox.Width := AAinKSPCheckbox.Width;
-  HQCloudsCheckbox.Caption := 'HQ Volumetric Clouds -> Basic Volumetric Clouds';
+  HQCloudsCheckbox.Caption := 'Remove HQ Volumetric Clouds Config (if present)';
   HQCloudsCheckbox.Enabled := False; 
   HQCloudsCheckbox.Visible := RaymarchedVolumetricsCheckbox.Checked;
 
@@ -1891,9 +1891,11 @@ var
   ConfigFilePath: string;
   Lines: TStringList;
   i: Integer;
+  HQCloudsFilePath: string;
 begin
   // Define the path to the settings.cfg file in the KSP directory
   ConfigFilePath := KSP_DIR + '\settings.cfg';
+  HQCloudsFilePath := KSP_DIR + '\GameData\HQ_volumetricClouds.cfg';
 
   // Log the attempt to update the settings.cfg file
   Log('Attempting to update settings.cfg at: ' + ConfigFilePath);
@@ -1943,6 +1945,26 @@ begin
     // Handle the case where the file does not exist
     Log('The settings.cfg file was not found at: ' + ConfigFilePath);
     MsgBox('The settings.cfg file was not found.', mbError, MB_OK);
+  end;
+
+  // Delete HQ_volumetricClouds.cfg if the HQCloudsCheckbox is checked
+  if HQCloudsCheckbox.Checked then
+  begin
+    if FileExists(HQCloudsFilePath) then
+    begin
+      if DeleteFile(HQCloudsFilePath) then
+      begin
+        Log('Deleted HQ_volumetricClouds.cfg successfully.');
+      end
+      else
+      begin
+        Log('Failed to delete HQ_volumetricClouds.cfg.');
+      end;
+    end
+    else
+    begin
+      Log('HQ_volumetricClouds.cfg was not found at: ' + HQCloudsFilePath);
+    end;
   end;
 end;
 
