@@ -54,7 +54,7 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
 
 ## Troubleshooting
 
-- ***Parallax Error*** Unable to locate a creitical part of the Parallax Installation: ParallaxTerrain.cfg is missing.
+- ***Parallax Error*** Unable to locate a critical part of the Parallax Installation: ParallaxTerrain.cfg is missing.
     - Completely normal and unavoidable. You can ignore.
 - ***7-Zip executable not found! Please ensure 7-Zip is installed.***
     - Ensure that 7-Zip or WinRAR is installed in the default location.
@@ -69,7 +69,7 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
  
 #### If you encounter a problem not listed:
 
-Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues) with your latest log (found in your KSP directory inside `\Logs\RSSRebornInstallerLogs`. 
+Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues) with your latest log (found in your KSP directory inside `\Logs\RSSRebornInstaller`. 
 The log will look something like `Setup Log 2024-07-15 #001.txt`.
 
 Alternatively, the log can be found in the directory: `C:\Users\yourusername\AppData\Local\Temp`, where yourusername is the name of your windows user. 

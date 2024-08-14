@@ -1933,7 +1933,7 @@ begin
     GetLatestReleaseHTTPInfo(Repo);
     Log('Fetched latest release info. Storing data...');
     StoreReleaseInfo(Repo, Resolution, JSONData, Key);
-  end;
+  end; 
 
   // Start JSON Parsing
   Log('Starting JSON parsing.');
@@ -3207,9 +3207,43 @@ end;
 
 procedure DeinitializeSetup;
 // Cleans up resources and temporary files after installation.
+var
+  LogFilePathName, LogFileName, NewFilePathName, NewFilePathNameLogs, NewFilePathNameRSS: string;
 begin
   Log('Deinitializing setup and cleaning up resources');  
 	ClearDownloadDirectory;
+
+  // Get the full path of the log file
+  LogFilePathName := ExpandConstant('{log}');
+  LogFileName := ExtractFileName(LogFilePathName);
+  
+  // Set the new target path
+  NewFilePathName := ExpandConstant(KSP_DIR + '\Logs\RSSRebornInstaller\') + LogFileName;
+  Log('Destination file path ' + NewFilePathName);
+  NewFilePathNameLogs := ExpandConstant(KSP_DIR + '\Logs');
+  Log('KSP Log file path ' + NewFilePathNameLogs);
+  NewFilePathNameRSS := ExpandConstant(KSP_DIR + '\Logs\RSSRebornInstaller');
+  Log('RSS Log file path ' + NewFilePathNameRSS);
+
+  // Ensure the directory exists
+  if not DirExists(NewFilePathNameLogs) then
+    CreateDir(NewFilePathNameLogs);
+
+  if not DirExists(ExpandConstant(NewFilePathNameRSS)) then
+    CreateDir(ExpandConstant(NewFilePathNameRSS));
+  
+  // Copy the log file to the new location
+  if FileExists(LogFilePathName) then
+  begin
+    FileCopy(LogFilePathName, NewFilePathName, False);
+    Log('Log Copied to ' + NewFilePathName);
+  end
+  else
+  begin
+    MsgBox('Log file not found.', mbError, MB_OK)
+  end;
+
+  Log('Installer has completed.');  
 end;
 
 procedure CheckAndAddFolder(const FolderName: string; ModList, MissingMods: TStringList; GameDataPath: string);
@@ -3294,57 +3328,6 @@ begin
   end;
 end;
 
-procedure CopySetupLog;
-var
-  LogFileName, SourceLogPath, DestLogPath: string;
-  KSPLogDir, KSPLogs: string;
-begin
-  // Define the KSP log directory
-  KSPLogs := KSP_DIR + '\Logs';
-  KSPLogDir := KSP_DIR + '\Logs\RSSRebornInstallerLogs';
-
-  // Create the directory if it doesn't exist
-    if not DirExists(KSPLogs) then
-  begin
-    if not CreateDir(KSPLogs) then
-    begin
-      Log('Failed to create log directory: ' + KSPLogs);
-      Exit;
-    end;
-  end;
-  if not DirExists(KSPLogDir) then
-  begin
-    if not CreateDir(KSPLogDir) then
-    begin
-      Log('Failed to create log directory: ' + KSPLogDir);
-      Exit;
-    end;
-  end;
-
-  // Find the most recent setup log file in the AppData local temp directory
-  LogFileName := FileSearch('Setup Log *.txt', ExpandConstant('{localappdata}\Temp'));
-
-  if LogFileName <> '' then
-  begin
-    SourceLogPath := ExpandConstant('{localappdata}\Temp\' + LogFileName);
-    DestLogPath := KSPLogDir + '\' + LogFileName;
-
-    // Copy the log file to the KSP log directory
-    if not FileCopy(SourceLogPath, DestLogPath, False) then
-    begin
-      Log('Failed to copy log file: ' + SourceLogPath + ' to ' + DestLogPath);
-    end
-    else
-    begin
-      Log('Log file copied successfully: ' + SourceLogPath + ' to ' + DestLogPath);
-    end;
-  end
-  else
-  begin
-    Log('No setup log files found in the Temp directory.');
-  end;
-end;
-
 procedure CurStepChanged(CurStep: TSetupStep);
 // Actual process steps for installation
 begin
@@ -3411,7 +3394,5 @@ begin
 
       Log('Installation process completed successfully, cleaning up files now');
 			DeinitializeSetup;
-
-      CopySetupLog;
   end;
 end;
