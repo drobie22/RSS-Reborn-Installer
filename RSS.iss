@@ -95,6 +95,7 @@ var
   FileEdit: TEdit;
   FileLabel: TLabel;
   GitHubCount: TStringList;
+  HQCloudsCheckbox: TCheckBox;
   IndividualProgressBar: TNewProgressBar;
   KSPDirPage: TInputDirWizardPage;
   KSP_DIR: string;
@@ -1519,6 +1520,8 @@ begin
   FileEdit.Visible := RaymarchedVolumetricsCheckbox.Checked;
   FileBrowseButton.Visible := RaymarchedVolumetricsCheckbox.Checked;
   FileLabel.Visible := RaymarchedVolumetricsCheckbox.Checked;
+  HQCloudsCheckbox.Visible := RaymarchedVolumetricsCheckbox.Checked;
+  HQCloudsCheckbox.Checked := False;
 end;
 
 procedure BrowseForFile(Sender: TObject);
@@ -1541,6 +1544,7 @@ begin
   ReflectionQualityCheckbox.Enabled := CommunitySettings.Checked;
   ReflectionTextureCheckbox.Enabled := CommunitySettings.Checked;
   AAinKSPCheckbox.Enabled := CommunitySettings.Checked;
+  HQCloudsCheckbox.Enabled := CommunitySettings.Checked;
 
   if not CommunitySettings.Checked then
   begin
@@ -1548,6 +1552,7 @@ begin
     ReflectionQualityCheckbox.Checked := False; 
     ReflectionTextureCheckbox.Checked := False; 
     AAinKSPCheckbox.Checked := False; 
+    HQCloudsCheckbox.Checked := False; 
     Log('Community Settings turned off - all related checkboxes unchecked');
   end
   else
@@ -1722,6 +1727,15 @@ begin
   AAinKSPCheckbox.Caption := 'AA in KSP -> off';
   AAinKSPCheckbox.Enabled := False; 
 
+  HQCloudsCheckbox := TCheckBox.Create(WizardForm);
+  HQCloudsCheckbox.Parent := KSPDirPage.Surface;
+  HQCloudsCheckbox.Left := AAinKSPCheckbox.Left;
+  HQCloudsCheckbox.Top := AAinKSPCheckbox.Top + AAinKSPCheckbox.Height + 10;
+  HQCloudsCheckbox.Width := AAinKSPCheckbox.Width;
+  HQCloudsCheckbox.Caption := 'HQ Volumetric Clouds -> Basic Volumetric Clouds';
+  HQCloudsCheckbox.Enabled := False; 
+  HQCloudsCheckbox.Visible := RaymarchedVolumetricsCheckbox.Checked;
+
 	// Download Progress Bar Page
   DownloadPage := CreateOutputProgressPage('Downloading Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
   CurrentFileLabel := TNewStaticText.Create(DownloadPage);
@@ -1869,6 +1883,66 @@ begin
   begin
     RAYVOL_DIR := FileEdit.Text;
     Log('Raymarched Volumetrics File set to: ' + RAYVOL_DIR);
+  end;
+end;
+
+procedure UpdateConfigFile;
+var
+  ConfigFilePath: string;
+  Lines: TStringList;
+  i: Integer;
+begin
+  // Define the path to the settings.cfg file in the KSP directory
+  ConfigFilePath := KSP_DIR + '\settings.cfg';
+
+  // Log the attempt to update the settings.cfg file
+  Log('Attempting to update settings.cfg at: ' + ConfigFilePath);
+
+  // Check if the file exists
+  if FileExists(ConfigFilePath) then
+  begin
+    // Create a TStringList to load and modify the file
+    Lines := TStringList.Create;
+    try
+      // Load the file into the TStringList
+      Lines.LoadFromFile(ConfigFilePath);
+      Log('Loaded settings.cfg successfully.');
+
+      // Iterate through each line to find the target settings and update them
+      for i := 0 to Lines.Count - 1 do
+      begin
+        if ReflectionQualityCheckbox.Checked and (Pos('REFLECTION_PROBE_REFRESH_MODE', Lines[i]) = 1) then
+        begin
+          Lines[i] := 'REFLECTION_PROBE_REFRESH_MODE = 1';
+          Log('Updated REFLECTION_PROBE_REFRESH_MODE to 1');
+        end;
+
+        if ReflectionTextureCheckbox.Checked and (Pos('REFLECTION_PROBE_TEXTURE_RESOLUTION', Lines[i]) = 1) then
+        begin
+          Lines[i] := 'REFLECTION_PROBE_TEXTURE_RESOLUTION = 0';
+          Log('Updated REFLECTION_PROBE_TEXTURE_RESOLUTION to 0');
+        end;
+
+        if AAinKSPCheckbox.Checked and (Pos('ANTI_ALIASING', Lines[i]) = 1) then
+        begin
+          Lines[i] := 'ANTI_ALIASING = 0';
+          Log('Updated ANTI_ALIASING to 0');
+        end;
+      end;
+
+      // Save the updated lines back to the file
+      Lines.SaveToFile(ConfigFilePath);
+      Log('Saved changes to settings.cfg successfully.');
+    finally
+      Lines.Free;  // Free the TStringList after use
+      Log('Freed memory allocated for TStringList.');
+    end;
+  end
+  else
+  begin
+    // Handle the case where the file does not exist
+    Log('The settings.cfg file was not found at: ' + ConfigFilePath);
+    MsgBox('The settings.cfg file was not found.', mbError, MB_OK);
   end;
 end;
 
@@ -3356,6 +3430,7 @@ begin
 				end;
 			end;
 			StartInstallation;
+      UpdateConfigFile;
 			DownloadAllFiles;
 		finally
 			OnDownloadComplete;
