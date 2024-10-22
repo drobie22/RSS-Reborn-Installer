@@ -54,8 +54,11 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
 
 ## Troubleshooting
 
+- ***All textures are showing "none"!*** 
+    - Your GitHub token may have expired. Create a new token and run the installer again.
 - ***Parallax Error*** Unable to locate a critical part of the Parallax Installation: ParallaxTerrain.cfg is missing.
-    - Completely normal and unavoidable. You can ignore.
+    - Completely normal. You can ignore.
+    - OR enable the "Remove Parallax Texture Warning" checkbox in "Recommended Community Visual Settings"
 - ***7-Zip executable not found! Please ensure 7-Zip is installed.***
     - Ensure that 7-Zip or WinRAR is installed in the default location.
 - Check to make sure your Real Solar System installation can successfully run before using this installer. If that doesnt work, RSS Reborn will obviously not work. 
