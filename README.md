@@ -54,11 +54,11 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
 
 ## Troubleshooting
 
-- ***Parallax Error*** Unable to locate a creitical part of the Parallax Installation: ParallaxTerrain.cfg is missing.
+- ***Parallax Error*** Unable to locate a critical part of the Parallax Installation: ParallaxTerrain.cfg is missing.
     - Completely normal and unavoidable. You can ignore.
 - ***7-Zip executable not found! Please ensure 7-Zip is installed.***
     - Ensure that 7-Zip or WinRAR is installed in the default location.
-- Check to make sure RP-1 (RSS/RO) can successfully run before using this installer. If that doesnt work, RSS Reborn will obviously not work. 
+- Check to make sure your Real Solar System installation can successfully run before using this installer. If that doesnt work, RSS Reborn will obviously not work. 
 - If you load the game but get stuck on an infinite black loading screen with spinning planets, check to see if you have the stock Squad folders in GameData. Otherwise, submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues).
 - GitHub naturally doesn't like programs fetching lots of data at once. Usually this is capped at 60 calls per hour. The installer will run 20-40 requests to GitHub in a run depending on resolutions selected. If you see an error related to GitHub's rate limit, please wait an hour before trying again. 
     - Alternatively, there is a method to set up an access token on your machine which the installer will recognize and use to increase the limit to 5000 calls per hour. (Not sure why you need that, but you do you). 
@@ -66,10 +66,13 @@ Note: If any you encounter any issues, please submit an [issue](https://github.c
     - Installer will always grab the latest files from GitHub.
 - Help! No resolutions showing for a body! 
     - Most likely the latest release of that body was empty. Before you start installation, manually download the previous release.
+- Downloads are failing, why?
+    - Try connecting to another network or switching between wifi and ethernet. 
+    - Windows Defender could be blocking some downloads.
  
 #### If you encounter a problem not listed:
 
-Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues) with your latest log (found in your KSP directory inside `\Logs\RSSRebornInstallerLogs`. 
+Please submit an [issue](https://github.com/drobie22/RSS-Reborn-Installer/issues) with your latest log (found in your KSP directory inside `\Logs\RSSRebornInstaller`. 
 The log will look something like `Setup Log 2024-07-15 #001.txt`.
 
 Alternatively, the log can be found in the directory: `C:\Users\yourusername\AppData\Local\Temp`, where yourusername is the name of your windows user. 
@@ -103,6 +106,7 @@ Follow these steps to set up an environment access token to increase GitHub API 
 ### Step 2: Click on your Profile
 1. Click on your profile icon in the upper-right corner.
 2. Select "Developer Settings" from the menu.
+(You may also have to go to normal settings first, then go to Developer Settings)
 
 ### Step 3: Personal Access Tokens
 1. In Developer settings, click on "Personal Access Tokens".

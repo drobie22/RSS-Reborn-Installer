@@ -11,34 +11,36 @@
 ; ...but it works
 
 #define MyAppName "RSS Reborn Installer"
-#define MyAppVersion "1.1.3"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "drobie22/RSS-Reborn-Installer"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
 
 [Setup]
 AppName={#MyAppName}
-AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
+AppVersion={#MyAppVersion}
+Compression=lzma
 DefaultDirName={autopf}\RSS-Reborn-Installer
 DefaultGroupName=RSS-Reborn-Installer
 DisableDirPage=yes 
+DisableWelcomePage=no
 OutputBaseFilename=RSSRebornInstaller
+PrivilegesRequired=admin
 SetupLogging=yes
-Compression=lzma
 SolidCompression=yes
-WizardImageFile=images\backgroundmoon.bmp
+WizardImageFile=images\Mars.bmp
 WizardImageStretch=no
 WizardSmallImageFile=images\icon.bmp
 WizardStyle=modern
-DisableWelcomePage=no
-PrivilegesRequired=admin
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+#include ReadReg(HKLM, 'Software\WOW6432Node\Mitrich Software\Inno Download Plugin', 'InstallDir') + '\idp.iss'
 
 [Messages]
 WelcomeLabel2=This will install RSS Reborn into your KSP directory.%n%nMod created and maintained by Ballisticfox, Techo, and VaNnadin.%n[name/ver] created by DRobie22.
@@ -46,80 +48,96 @@ WelcomeLabel2=This will install RSS Reborn into your KSP directory.%n%nMod creat
 [Files]
 Source: "Licenses\license.txt"; DestDir: "{app}"; Flags: dontcopy;
 Source: "Licenses\lgpl-3.0.txt"; DestDir: "{app}"; Flags: dontcopy;
+Source: "idp.dll"; DestDir: "{tmp}"; Flags: dontcopy;
 
 [Code]
 const
   GitHubAPI = 'https://api.github.com/repos/';
   MAX_PATH = 260;
-	RequiredSpace = 50000000000;
+  MOVEFILE_COPY_ALLOWED = $2;
+  MOVEFILE_REPLACE_EXISTING = $1; 
+  RequiredSpace = 50000000000;
   RSSConfigsRepo = 'RSS-Reborn/RSS-Configs';
   RSSTexturesRepo = 'RSS-Reborn/RSS-Terrain';
   S_OK = 0;
-  URLMON_DLL = 'urlmon.dll';
-	SECONDS_IN_A_DAY = 86400;
+  SECONDS_IN_A_DAY = 86400;
   SECONDS_IN_AN_HOUR = 3600;
   SECONDS_IN_A_MINUTE = 60;
-  MOVEFILE_COPY_ALLOWED = $2;
-  MOVEFILE_REPLACE_EXISTING = $1;	
+  URLMON_DLL = 'urlmon.dll';
+  IDP_DOWNLOADING = 1;
+  IDP_DOWNLOADCOMPLETE = 2;
+  IDP_DOWNLOADERROR = 3;
 	
 var
-  AssetDataList: array of TStringList;
-  BodyRepos: array[0..12] of string;
-  BodySizes: array of string;	
-	BodyVersions: array of string;
-	BodiesWithNoAssets: TStringList;
-	StoredReleaseInfo: TStringList;
-	CurrentFileLabel: TNewStaticText;
-	CurrentFileLabelE: TNewStaticText;
-	CurrentFileLabelM: TNewStaticText;
-  DownloadList: TStringList;
-  DownloadsDir: string;
-	DownloadLogs: TStringList;
-	ExtractionLogs: TStringList;
-	RaymarchedVolumetricsCheckbox: TNewCheckBox;
-  EVEdownloaded: Boolean;
-	GitHubCount: TStringList;
-	KSP_DIR: string;
-  RAYVOL_DIR: string;
-  KSPDirPage: TInputDirWizardPage;
-  FileEdit: TEdit;
-  FileBrowseButton: TButton;
-  FileLabel: TLabel;
-	DownloadPage: TOutputProgressWizardPage;
-  IndividualProgressBar: TNewProgressBar;
-	ExtractPage: TOutputProgressWizardPage;
-	MergePage: TOutputProgressWizardPage;
-	LatestReleaseAssetsJSON: string;
-	LatestReleaseJSON: string;
-  LatestReleaseVersion: string;
-	MyAccessToken: string;
-	NoAssetsFound: Boolean;
-	ParallaxVersion: string;
-  ResolutionCombos: array of TComboBox;
-  RP1Checkbox: TNewCheckBox;
-	Sizes: array of Int64;
-  SizesList: array of TStringList;
-	SizeLabelList: array of TLabel;
-  ScattererDownloaded: Boolean;
-	UserCanceled: Boolean;
-  wpSelectResolutions: Integer;
-  ReleaseStore: TStringList;
-  AssetsStore: TStringList;
-  SevenZipPath: string;
-  WinRARPath: string;
+  AAinKSPCheckbox: TCheckBox;
+  AddTUFXCheckbox: TCheckBox;
+  AppExeName: String;
   AppName: String;
-  AppVersion: String;
   AppPublisher: String;
   AppURL: String;
-  AppExeName: String;
-  RobocopyCommands: TStringList;
+  AppVersion: String;
+  AssetDataList: array of TStringList;
+  AssetsStore: TStringList;
+  BodiesWithNoAssets: TStringList;
+  BodyRepos: array[0..12] of string;
+  BodySizes: array of string;
+  BodyVersions: array of string;
+  CommunitySettings: TCheckBox;
+  CurrentFileLabel: TNewStaticText;
+  CurrentFileLabelE: TNewStaticText;
+  CurrentFileLabelM: TNewStaticText;
+  DownloadList: TStringList;
+  DownloadLogs: TStringList;
+  DownloadPage: TOutputProgressWizardPage;
+  DownloadsDir: string;
+  EVEdownloaded: Boolean;
+  ExtractPage: TOutputProgressWizardPage;
+  ExtractionLogs: TStringList;
+  FileBrowseButton: TButton;
+  FileEdit: TEdit;
+  FileLabel: TLabel;
+  GitHubCount: TStringList;
+  HQCloudsCheckbox: TCheckBox;
+  IndividualProgressBar: TNewProgressBar;
+  KSPDirPage: TInputDirWizardPage;
+  KSP_DIR: string;
+  LatestReleaseAssetsJSON: string;
+  LatestReleaseJSON: string;
+  LatestReleaseVersion: string;
+  LineSeparator: TBevel;
+  MergePage: TOutputProgressWizardPage;
+  MyAccessToken: string;
+  NoAssetsFound: Boolean;
+  Note1: TLabel;
+  Note2: TLabel;
+  ParallaxVersion: string;
+  RAYVOL_DIR: string;
+  RP1Checkbox: TNewCheckBox;
+  RaymarchedVolumetricsCheckbox: TNewCheckBox;
+  ReflectionQualityCheckbox: TCheckBox;
+  ReflectionTextureCheckbox: TCheckBox;
+  ReleaseStore: TStringList;
+  ResolutionCombos: array of TComboBox;
   ReverseRobocopyCommands: TStringList;
-  ScaledCheckboxes: array of TCheckBox;
+  RobocopyCommands: TStringList;
   ScaledAssetsAvailable: array of Boolean;
-	
+  ScaledCheckboxes: array of TCheckBox;
+  ScattererDownloaded: Boolean;
+  SevenZipPath: string;
+  SizeLabelList: array of TLabel;
+  Sizes: array of Int64;
+  SizesList: array of TStringList;
+  StoredReleaseInfo: TStringList;
+  UserCanceled: Boolean;
+  WinRARPath: string;
+  wpSelectResolutions: Integer;
+
 type
   TResolutionPages = array of TWizardPage;
   TResolutionCombos = array of TComboBox;
+  TProgressCallback = procedure(Position, TotalSize: Integer);
+  TDownloadCallback = function(Progress: Integer; ProgressMax: Integer; Status: Integer; Param: Integer): Integer;
+  TDownloadProgressCallback = function(Progress: Integer; ProgressMax: Integer; Status: Integer; Param: Integer): Integer;
 
 procedure InitializeConstants;
 begin
@@ -128,6 +146,20 @@ begin
   AppPublisher := '{#MyAppPublisher}';
   AppURL := '{#MyAppURL}';
   AppExeName := '{#MyAppExeName}';
+end;
+
+procedure InitializeDownloadsDir;
+// Sets the directory for downloading files.
+begin
+  DownloadsDir := ExpandConstant(KSP_DIR + '\RSSRebornDownloads');
+  if not DirExists(DownloadsDir) then
+  begin
+    if CreateDir(DownloadsDir) then
+      Log('Created download directory: ' + DownloadsDir)
+    else
+      Log('Failed to create download directory: ' + DownloadsDir);
+  end;
+  Log('Downloads directory initialized: ' + DownloadsDir); 
 end;
 
 procedure InitializeVariables;
@@ -303,6 +335,7 @@ end;
 function InitializeSetup: Boolean;
 // Begin the sequence by checking for space and required programs
 begin
+  Log('Initializing setup...');
   ReleaseStore := TStringList.Create;
   AssetsStore := TStringList.Create;
   Result := True;
@@ -860,7 +893,7 @@ begin
 end;
 
 procedure GetLatestReleaseHTTPInfo(Repo: string);
-// Main call to GitHub api
+// Main call to GitHub API
 var
   HttpCli: Variant;
   CombinedResponse: string;
@@ -891,19 +924,30 @@ begin
     if HttpCli.Status = 200 then
     begin
       CombinedResponse := HttpCli.ResponseText;
+
+      // Validate and log the response length
+      Log('Response received. Length: ' + IntToStr(Length(CombinedResponse)));
       if CombinedResponse = '' then
       begin
         Log('Empty response for latest release info');
         Exit;
       end;
 
+      // Store the full JSON response
       LatestReleaseJSON := CombinedResponse;
+      //Log('Full JSON Response: ' + LatestReleaseJSON);
 
-      // Parse the JSON response to extract necessary fields and assets
+      // Extract the tag name (version) from the response
       LatestReleaseVersion := ExtractJSONField(CombinedResponse, '"tag_name":"');
-      LatestReleaseAssetsJSON := ExtractJSONArray(CombinedResponse, '"assets":[');
+      if LatestReleaseVersion = '' then
+        Log('Warning: Could not extract "tag_name" from JSON.');
 
-      // Store the combined JSON responses
+      // Extract the assets array from the response
+      LatestReleaseAssetsJSON := ExtractJSONArray(CombinedResponse, '"assets":[');
+      if LatestReleaseAssetsJSON = '' then
+        Log('Warning: Could not extract "assets" array from JSON.');
+
+      // Store the combined JSON responses for future use
       StoreReleaseInfo(Repo, '', LatestReleaseJSON, LatestReleaseAssetsJSON);
     end
     else
@@ -1480,6 +1524,8 @@ begin
   FileEdit.Visible := RaymarchedVolumetricsCheckbox.Checked;
   FileBrowseButton.Visible := RaymarchedVolumetricsCheckbox.Checked;
   FileLabel.Visible := RaymarchedVolumetricsCheckbox.Checked;
+  HQCloudsCheckbox.Visible := RaymarchedVolumetricsCheckbox.Checked;
+  HQCloudsCheckbox.Checked := False;
 end;
 
 procedure BrowseForFile(Sender: TObject);
@@ -1491,6 +1537,40 @@ begin
   begin
     FileEdit.Text := FileName;
   end;
+end;
+
+// Event handler for CommunitySettings checkbox
+procedure CommunitySettingsClick(Sender: TObject);
+begin
+  AddTUFXCheckbox.Enabled := CommunitySettings.Checked;
+  Note1.Enabled := CommunitySettings.Checked;
+  Note2.Enabled := CommunitySettings.Checked;
+  ReflectionQualityCheckbox.Enabled := CommunitySettings.Checked;
+  ReflectionTextureCheckbox.Enabled := CommunitySettings.Checked;
+  AAinKSPCheckbox.Enabled := CommunitySettings.Checked;
+  HQCloudsCheckbox.Enabled := CommunitySettings.Checked;
+
+  if not CommunitySettings.Checked then
+  begin
+    AddTUFXCheckbox.Checked := False; 
+    ReflectionQualityCheckbox.Checked := False; 
+    ReflectionTextureCheckbox.Checked := False; 
+    AAinKSPCheckbox.Checked := False; 
+    HQCloudsCheckbox.Checked := False; 
+    Log('Community Settings turned off - all related checkboxes unchecked');
+  end
+  else
+  begin
+    Log('Community Settings turned on');
+  end;
+end;
+
+procedure WizardFormResize(Sender: TObject);
+begin
+  FileEdit.Width := WizardForm.ClientWidth - FileBrowseButton.Width - FileEdit.Left - 90; 
+  FileBrowseButton.Left := FileEdit.Left + FileEdit.Width + 10;
+  LineSeparator.Width := WizardForm.ClientWidth - KSPDirPage.Edits[0].Left * 2;
+  CommunitySettings.Width := WizardForm.ClientWidth - KSPDirPage.Edits[0].Left * 2;
 end;
 
 procedure InitializeWizard;
@@ -1508,7 +1588,7 @@ begin
   InitializeVariables;
 	InitializeArrayLengths;
   InitializeBodyRepos;
-  
+
   // Read GitHub access token from the registry if it exists
   MyAccessToken := ReadGitHubAccessToken;
 
@@ -1525,7 +1605,7 @@ begin
 	// Checkbox on welcome page
   RP1Checkbox := TNewCheckBox.Create(WizardForm);
   RP1Checkbox.Parent := WizardForm.WelcomePage;
-  RP1Checkbox.Left := ScaleX(18);
+  RP1Checkbox.Left := ScaleX(175);
   RP1Checkbox.Top := ScaleY(175);
   RP1Checkbox.Width := WizardForm.ClientWidth - ScaleX(36);
   RP1Checkbox.Height := ScaleY(40);
@@ -1537,16 +1617,20 @@ begin
 	// Checkbox on welcome page
   RaymarchedVolumetricsCheckbox := TNewCheckBox.Create(WizardForm);
   RaymarchedVolumetricsCheckbox.Parent := WizardForm.WelcomePage;
-  RaymarchedVolumetricsCheckbox.Left := ScaleX(18);
+  RaymarchedVolumetricsCheckbox.Left := ScaleX(175);
   RaymarchedVolumetricsCheckbox.Top := ScaleY(215);
   RaymarchedVolumetricsCheckbox.Width := WizardForm.ClientWidth - ScaleX(36);
   RaymarchedVolumetricsCheckbox.Height := ScaleY(40);
   RaymarchedVolumetricsCheckbox.Caption := '(Optional) I am using Blackrack''s Volumetric Clouds.';
   RaymarchedVolumetricsCheckbox.Checked := False;
   Log('EVE and Scatterer download confirmation checkbox created');
-  
+
+	// Resolution input page
+  Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
+  wpSelectResolutions := Page.ID;
+
   // Create the KSP directory input page
-  KSPDirPage := CreateInputDirPage(wpWelcome, 'KSP Directory', 'Select the KSP directory', 'Please select the directory where Kerbal Space Program is installed.', False, '');
+  KSPDirPage := CreateInputDirPage(wpWelcome, 'KSP Settings', 'Select the KSP directory, and choose Settings', 'Please select the directory where Kerbal Space Program is installed.', False, '');
   KSPDirPage.Add('KSP Directory');
   KSPDirPage.Values[0] := 'C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program';
 
@@ -1563,7 +1647,7 @@ begin
   FileEdit.Parent := KSPDirPage.Surface;
   FileEdit.Top := FileLabel.Top + FileLabel.Height + 5;
   FileEdit.Left := FileLabel.Left;
-  FileEdit.Width := KSPDirPage.Edits[0].Width + 100;
+  FileEdit.Width := WizardForm.ClientWidth - FileEdit.Left - 20;
   FileEdit.Visible := False;
 
   // Create the file browse button
@@ -1577,10 +1661,83 @@ begin
 
   FileBrowseButton.OnClick := @BrowseForFile;
   RaymarchedVolumetricsCheckbox.OnClick := @RaymarchedVolumetricsCheckboxClick;
+  WizardForm.OnResize := @WizardFormResize;
 
-	// Resolution input page
-  Page := CreateCustomPage(wpWelcome, 'Select Resolutions', 'Select the desired resolution for each body');
-  wpSelectResolutions := Page.ID;
+  // Create the line separator
+  LineSeparator := TBevel.Create(WizardForm);
+  LineSeparator.Parent := KSPDirPage.Surface;
+  LineSeparator.Shape := bsTopLine;
+  LineSeparator.Left := KSPDirPage.Edits[0].Left;
+  LineSeparator.Top := FileBrowseButton.Top + FileBrowseButton.Height + 10;
+  LineSeparator.Width := WizardForm.ClientWidth - KSPDirPage.Edits[0].Left * 2;
+  LineSeparator.Height := 2;
+
+  // Create and configure the first checkbox
+  CommunitySettings := TCheckBox.Create(WizardForm);
+  CommunitySettings.Parent := KSPDirPage.Surface;
+  CommunitySettings.Left := KSPDirPage.Edits[0].Left;
+  CommunitySettings.Top := LineSeparator.Top + LineSeparator.Height + 10;
+  CommunitySettings.Width := WizardForm.ClientWidth - KSPDirPage.Edits[0].Left * 2;
+  CommunitySettings.Caption := 'Enable Recommended Community Visual Settings';
+  CommunitySettings.Checked := False; 
+  CommunitySettings.OnClick := @CommunitySettingsClick;
+
+  AddTUFXCheckbox := TCheckBox.Create(WizardForm);
+  AddTUFXCheckbox.Parent := KSPDirPage.Surface;
+  AddTUFXCheckbox.Left := CommunitySettings.Left + 25;
+  AddTUFXCheckbox.Top := CommunitySettings.Top + CommunitySettings.Height + 10;
+  AddTUFXCheckbox.Width := CommunitySettings.Width;
+  AddTUFXCheckbox.Caption := 'Add TUFX to installation';
+  AddTUFXCheckbox.Enabled := False; 
+
+  Note1 := TLabel.Create(WizardForm);
+  Note1.Parent := KSPDirPage.Surface;
+  Note1.Left := AddTUFXCheckbox.Left + 20;
+  Note1.Top := AddTUFXCheckbox.Top + AddTUFXCheckbox.Height + 5;
+  Note1.Caption := '    - Needed for Blackrack''s profile and (easy) anti aliasing.';
+  Note1.AutoSize := True;
+  Note1.Enabled := False;
+
+  Note2 := TLabel.Create(WizardForm);
+  Note2.Parent := KSPDirPage.Surface;
+  Note2.Left := AddTUFXCheckbox.Left + 20;
+  Note2.Top := Note1.Top + Note1.Height + 5;
+  Note2.Caption := '    - SMAA enabled.';
+  Note2.AutoSize := True;
+  Note2.Enabled := False;
+
+  ReflectionQualityCheckbox := TCheckBox.Create(WizardForm);
+  ReflectionQualityCheckbox.Parent := KSPDirPage.Surface;
+  ReflectionQualityCheckbox.Left := AddTUFXCheckbox.Left;
+  ReflectionQualityCheckbox.Top := Note2.Top + Note2.Height + 10;
+  ReflectionQualityCheckbox.Width := AddTUFXCheckbox.Width;
+  ReflectionQualityCheckbox.Caption := 'Reflection Quality -> Low';
+  ReflectionQualityCheckbox.Enabled := False;
+
+  ReflectionTextureCheckbox := TCheckBox.Create(WizardForm);
+  ReflectionTextureCheckbox.Parent := KSPDirPage.Surface;
+  ReflectionTextureCheckbox.Left := ReflectionQualityCheckbox.Left;
+  ReflectionTextureCheckbox.Top := ReflectionQualityCheckbox.Top + ReflectionQualityCheckbox.Height + 10;
+  ReflectionTextureCheckbox.Width := ReflectionQualityCheckbox.Width;
+  ReflectionTextureCheckbox.Caption := 'Reflection Texture -> 128';
+  ReflectionTextureCheckbox.Enabled := False;
+
+  AAinKSPCheckbox := TCheckBox.Create(WizardForm);
+  AAinKSPCheckbox.Parent := KSPDirPage.Surface;
+  AAinKSPCheckbox.Left := ReflectionTextureCheckbox.Left;
+  AAinKSPCheckbox.Top := ReflectionTextureCheckbox.Top + ReflectionTextureCheckbox.Height + 10;
+  AAinKSPCheckbox.Width := ReflectionTextureCheckbox.Width;
+  AAinKSPCheckbox.Caption := 'AA in KSP -> off';
+  AAinKSPCheckbox.Enabled := False; 
+
+  HQCloudsCheckbox := TCheckBox.Create(WizardForm);
+  HQCloudsCheckbox.Parent := KSPDirPage.Surface;
+  HQCloudsCheckbox.Left := AAinKSPCheckbox.Left;
+  HQCloudsCheckbox.Top := AAinKSPCheckbox.Top + AAinKSPCheckbox.Height + 10;
+  HQCloudsCheckbox.Width := AAinKSPCheckbox.Width;
+  HQCloudsCheckbox.Caption := 'Remove HQ Volumetric Clouds Config (if present)';
+  HQCloudsCheckbox.Enabled := False; 
+  HQCloudsCheckbox.Visible := RaymarchedVolumetricsCheckbox.Checked;
 
 	// Download Progress Bar Page
   DownloadPage := CreateOutputProgressPage('Downloading Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
@@ -1732,18 +1889,86 @@ begin
   end;
 end;
 
-procedure InitializeDownloadsDir;
-// Sets the directory for downloading files.
+procedure UpdateConfigFile;
+var
+  ConfigFilePath: string;
+  Lines: TStringList;
+  i: Integer;
+  HQCloudsFilePath: string;
 begin
-  DownloadsDir := ExpandConstant(KSP_DIR + '\RSSRebornDownloads');
-  if not DirExists(DownloadsDir) then
+  // Define the path to the settings.cfg file in the KSP directory
+  ConfigFilePath := KSP_DIR + '\settings.cfg';
+  HQCloudsFilePath := KSP_DIR + '\GameData\HQ_volumetricClouds.cfg';
+
+  // Log the attempt to update the settings.cfg file
+  Log('Attempting to update settings.cfg at: ' + ConfigFilePath);
+
+  // Check if the file exists
+  if FileExists(ConfigFilePath) then
   begin
-    if CreateDir(DownloadsDir) then
-      Log('Created download directory: ' + DownloadsDir)
-    else
-      Log('Failed to create download directory: ' + DownloadsDir);
+    // Create a TStringList to load and modify the file
+    Lines := TStringList.Create;
+    try
+      // Load the file into the TStringList
+      Lines.LoadFromFile(ConfigFilePath);
+      Log('Loaded settings.cfg successfully.');
+
+      // Iterate through each line to find the target settings and update them
+      for i := 0 to Lines.Count - 1 do
+      begin
+        if ReflectionQualityCheckbox.Checked and (Pos('REFLECTION_PROBE_REFRESH_MODE', Lines[i]) = 1) then
+        begin
+          Lines[i] := 'REFLECTION_PROBE_REFRESH_MODE = 1';
+          Log('Updated REFLECTION_PROBE_REFRESH_MODE to 1');
+        end;
+
+        if ReflectionTextureCheckbox.Checked and (Pos('REFLECTION_PROBE_TEXTURE_RESOLUTION', Lines[i]) = 1) then
+        begin
+          Lines[i] := 'REFLECTION_PROBE_TEXTURE_RESOLUTION = 0';
+          Log('Updated REFLECTION_PROBE_TEXTURE_RESOLUTION to 0');
+        end;
+
+        if AAinKSPCheckbox.Checked and (Pos('ANTI_ALIASING', Lines[i]) = 1) then
+        begin
+          Lines[i] := 'ANTI_ALIASING = 0';
+          Log('Updated ANTI_ALIASING to 0');
+        end;
+      end;
+
+      // Save the updated lines back to the file
+      Lines.SaveToFile(ConfigFilePath);
+      Log('Saved changes to settings.cfg successfully.');
+    finally
+      Lines.Free;  // Free the TStringList after use
+      Log('Freed memory allocated for TStringList.');
+    end;
+  end
+  else
+  begin
+    // Handle the case where the file does not exist
+    Log('The settings.cfg file was not found at: ' + ConfigFilePath);
+    MsgBox('The settings.cfg file was not found.', mbError, MB_OK);
   end;
-  Log('Downloads directory initialized: ' + DownloadsDir);
+
+  // Delete HQ_volumetricClouds.cfg if the HQCloudsCheckbox is checked
+  if HQCloudsCheckbox.Checked then
+  begin
+    if FileExists(HQCloudsFilePath) then
+    begin
+      if DeleteFile(HQCloudsFilePath) then
+      begin
+        Log('Deleted HQ_volumetricClouds.cfg successfully.');
+      end
+      else
+      begin
+        Log('Failed to delete HQ_volumetricClouds.cfg.');
+      end;
+    end
+    else
+    begin
+      Log('HQ_volumetricClouds.cfg was not found at: ' + HQCloudsFilePath);
+    end;
+  end;
 end;
 
 procedure ClearDownloadDirectory;
@@ -1758,64 +1983,123 @@ begin;
     Log('DownloadsDir directory does not exist:' + DownloadsDir);
 end;
 
-function GetRepoDownloadURLs(Repo, Resolution: string; IsScaled: Boolean): TStringList;
+function ExtractJSONString(const JSON: string; var CurrentPos: Integer): string;
 var
-  AssetName, BrowserDownloadURL: string;
-  I, J, StartPos: Integer;
-  ReleaseJSON, AssetsJSON: string;
+  StartPos, EndPos: Integer;
+begin
+  Result := '';
+  // Move CurrentPos to the start of the string (skip any whitespace or quotes)
+  while (CurrentPos <= Length(JSON)) and (JSON[CurrentPos] in [' ', '"']) do
+    Inc(CurrentPos);
+  
+  StartPos := CurrentPos;
+  
+  // Find the end of the string
+  while (CurrentPos <= Length(JSON)) and (JSON[CurrentPos] <> '"') do
+    Inc(CurrentPos);
+  
+  EndPos := CurrentPos;
+  
+  // Extract the string
+  if EndPos > StartPos then
+    Result := Copy(JSON, StartPos, EndPos - StartPos);
+  
+  Inc(CurrentPos);  // Move past the closing quote
+end;
+
+function GetRepoDownloadURLs(Repo, Resolution: String; IsScaled: Boolean): TStringList;
+var
+  JSONData, Key, AssetName, BrowserDownloadURL: String;
+  IsScaledStr: String;
+  AssetSectionStart, NameStart, NameEnd, UrlStart, UrlEnd: Integer;
 begin
   Result := TStringList.Create;
-  Log('GetRepoDownloadURLs is attempting to retrieve stored data for repository: ' + Repo + ' with Resolution: ' + Resolution);
+  
+  // Convert IsScaled boolean to string for logging
+  if IsScaled then
+    IsScaledStr := 'True'
+  else
+    IsScaledStr := 'False';
 
-  if GetStoredJSONForRepo(Repo, Resolution, ReleaseJSON, AssetsJSON) then
+  // Retrieve stored JSON for the repo if available, otherwise fetch from the web
+  if GetStoredJSONForRepo(Repo, Resolution, JSONData, Key) then
   begin
-    LatestReleaseAssetsJSON := AssetsJSON;
-    LatestReleaseJSON := ReleaseJSON;
-    Log('GetRepoDownloadURLs is using stored release info for ' + Repo);
+    Log('Using stored release info for repository: ' + Repo);
   end
   else
   begin
-    Log('No stored data found for ' + Repo + '. Fetching latest release info.');
+    Log('No stored data found for repository: ' + Repo + '. Fetching latest release info from the web.');
     GetLatestReleaseHTTPInfo(Repo);
-    StoreReleaseInfo(Repo, Resolution, LatestReleaseJSON, LatestReleaseAssetsJSON);
-  end;
+    Log('Fetched latest release info. Storing data...');
+    StoreReleaseInfo(Repo, Resolution, JSONData, Key);
+  end; 
 
-  StartPos := 1;
-  while StartPos > 0 do
+  // Start JSON Parsing
+  Log('Starting JSON parsing.');
+
+  // Find the start of the assets section
+  AssetSectionStart := Pos('"assets":[', JSONData);
+  if AssetSectionStart = 0 then
   begin
-    I := PosEx('"name":"', LatestReleaseAssetsJSON, StartPos);
-    if I > 0 then
+    Log('Error: "assets" section not found in the JSON.');
+    Exit;
+  end;
+  
+  // Process each asset in the assets section
+  while True do
+  begin
+    // Find the start of the next asset object
+    NameStart := PosEx('"name":"', JSONData, AssetSectionStart);
+    if NameStart = 0 then
     begin
-      I := I + Length('"name":"');
-      J := FindNextQuote(LatestReleaseAssetsJSON, I);
-      if J > 0 then
+      Log('No more assets found in the JSON.');
+      Break;
+    end;
+    
+    NameStart := NameStart + Length('"name":"');
+    NameEnd := PosEx('"', JSONData, NameStart);
+    AssetName := Copy(JSONData, NameStart, NameEnd - NameStart);
+    Log('Found asset: ' + AssetName);
+
+    // Check if the asset matches the criteria
+    if (Resolution = '') or (ExtractResolution(AssetName) = Resolution) or 
+       (IsScaled and (Pos('scaled', LowerCase(AssetName)) > 0)) then
+    begin
+      //Log('Asset matches criteria (Resolution: ' + Resolution + ', IsScaled: ' + IsScaledStr + ').');
+
+      // Look for the "browser_download_url"
+      UrlStart := PosEx('"browser_download_url":"', JSONData, NameEnd);
+      if UrlStart > 0 then
       begin
-        AssetName := Copy(LatestReleaseAssetsJSON, I, J - I);
-        Log('Found asset: ' + AssetName);
-        
-        if (Resolution = '') or (ExtractResolution(AssetName) = Resolution) or (IsScaled and (Pos('scaled', LowerCase(AssetName)) > 0)) then
-        begin
-          I := PosEx('"browser_download_url":"', LatestReleaseAssetsJSON, J);
-          if I > 0 then
-          begin
-            I := I + Length('"browser_download_url":"');
-            J := FindNextQuote(LatestReleaseAssetsJSON, I);
-            if J > 0 then
-            begin
-              BrowserDownloadURL := Copy(LatestReleaseAssetsJSON, I, J - I);
-              Result.Add(BrowserDownloadURL);
-              //Log('Added download URL: ' + BrowserDownloadURL);
-            end;
-          end;
-        end;
-        StartPos := J + 1;
+        UrlStart := UrlStart + Length('"browser_download_url":"');
+        UrlEnd := PosEx('"', JSONData, UrlStart);
+        BrowserDownloadURL := Copy(JSONData, UrlStart, UrlEnd - UrlStart);
+
+        Log('Valid download URL found: ' + BrowserDownloadURL);
+        Result.Add(BrowserDownloadURL);
+      end
+      else
+      begin
+        Log('Error: "browser_download_url" not found for asset: ' + AssetName);
       end;
     end
     else
-      Break;
+    begin
+      Log('Asset does not match criteria and will be skipped.');
+    end;
+    
+    // Move to the next asset
+    AssetSectionStart := NameEnd;
   end;
 
-  Log('Completed retrieving download URLs for repository: ' + Repo);
+  if Result.Count = 0 then
+  begin
+    Log('No valid URLs were found or matched the criteria.');
+  end
+  else
+  begin
+    Log('Total URLs found: ' + IntToStr(Result.Count));
+  end;
 end;
 
 procedure AddToDownloadList(Repo, Resolution, DestFilePath: string; IncludeScaled: Boolean);
@@ -1952,6 +2236,17 @@ begin
   else
   begin
     Log('Skipping, using Blackrack''s Volumetrics');
+  end;
+
+  // TUFX
+  if AddTUFXCheckbox.Checked then
+  begin
+    AddToDownloadList('KSPModStewards/TUFX', '', (DownloadsDir + '\TUFX.zip'), False);
+    Log('TUFX will be downloaded and installed.');
+  end
+  else
+  begin
+    Log('Skipping TUFX Option as it is not selected.');
   end;
 
   // Download Parallax
@@ -2646,6 +2941,21 @@ begin
     Log('RSSVE directory will remain, no raymarched volumetrics.');
   end;
 
+  if AddTUFXCheckbox.Checked then
+  begin
+    if DirectoryExists(KSP_DIR + 'KSPModStewards/TUFX') then
+      if not DelTree(KSP_DIR + 'KSPModStewards/TUFX', True, True, True) then
+        Log('Failed to delete TUFX directory.')
+      else
+        Log('TUFX directory deleted.')
+    else
+      Log('TUFX directory does not exist.');
+  end
+  else
+  begin
+    Log('TUFX directory will remain, not selected by user.');
+  end;
+
   if DirectoryExists(KSP_DIR + '\GameData\RealSolarSystem') then
     if not DelTree(KSP_DIR + '\GameData\RealSolarSystem', True, True, True) then
       Log('Failed to delete RealSolarSystem directory.')
@@ -2772,78 +3082,58 @@ begin
   end;
 end;
 
-function URLDownloadToFile(Caller: Integer; URL: PAnsiChar; FileName: PAnsiChar; Reserved: Integer; StatusCB: Integer): Integer;
-  external 'URLDownloadToFileA@urlmon.dll stdcall';
-
 procedure DownloadAllFiles;
-// The full procedure that executes the download list
 var
   URL, Dest, FileName, DownloadItem: String;
   I: Integer;
-  DownloadResult: HRESULT;
+  ResultIDP: Boolean;
+  ErrorCode: Integer;
 begin
   Log('========================================================');
   DownloadPage.SetProgress(0, DownloadList.Count);
-
-  // List Downloads
+  IndividualProgressBar.Position := 0;
   for I := 0 to DownloadList.Count - 1 do
   begin
     Log(DownloadList[I]);
   end;
+  if DownloadList.Count = 0 then
+  begin
+    Log('No downloads found!');
+    MsgBox('Failed to queue URLs for download. Please submit an issue on GitHub with your log.', mbError, MB_OK);
+    abort;
+  end;
+
+  idpSetOption('DetailedMode',   '1');
 
   for I := 0 to DownloadList.Count - 1 do
   begin
     DownloadPage.SetProgress(I, DownloadList.Count);
-    
-    // Extract URL and TempFile from DownloadList
     DownloadItem := DownloadList[I];
     URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
     FileName := CustomExtractFileName(URL);
-
-    // Ensure the correct destination path
     Dest := DownloadsDir + '\' + FileName;
-    
     CurrentFileLabel.Caption := 'Downloading: ' + FileName;
     WizardForm.Update;
+    Log('Starting download for URL: ' + URL);
+    Log('URL downloading to: ' + expandconstant(Dest));
 
-    Log('Calling URLDownloadToFile with URL: ' + URL + ' and Dest: ' + Dest);
-    
-    DownloadResult := URLDownloadToFile(0, PAnsiChar(URL), PAnsiChar(Dest), 0, 0);
-    GitHubCount.Add('Github Call');
-
-    if DownloadResult = S_OK then
+    ResultIDP := idpDownloadFile(URL, expandconstant(Dest));
+    if not ResultIDP then
     begin
-      Log('Successfully downloaded ' + URL + ' to ' + Dest);
-      DownloadLogs.Add('Successfully downloaded ' + URL + ' to ' + Dest);
+      Log('Failed to download ' + URL);
+      MsgBox('Failed to download ' + URL, mbError, MB_OK);
     end
     else
     begin
-      case DownloadResult of
-        -2146697208: Log('Error -2146697208 (INET_E_DOWNLOAD_FAILURE): The download was blocked due to security reasons.');
-        -2146697211: Log('Error -2146697211 (INET_E_RESOURCE_NOT_FOUND): The server could not be found or there was a network connectivity issue.');
-        -2146697207: Log('Error -2146697207 (INET_E_DATA_NOT_AVAILABLE): No data is available for the requested resource.');
-        -2146697210: Log('Error -2146697210 (INET_E_INVALID_REQUEST): The server returned an invalid or unrecognized response.');
-        -2146697201: Log('Error -2146697201 (INET_E_DOWNLOAD_BLOCKED): The request was invalid due to a problem with the URL.');
-        -2146697209: Log('Error -2146697209 (INET_E_OBJECT_NOT_FOUND): The server or proxy returned an invalid or unrecognized response.');
-        -2146697213: Log('Error -2146697213 (INET_E_SECURITY_PROBLEM): A security problem occurred. Make sure SSL and TLS settings are correct.');
-        -2146697214: Log('Error -2146697214 (INET_E_CANNOT_CONNECT): The request was forbidden by the server.');
-        -2146697205: Log('Error -2146697205 (INET_E_REDIRECT_FAILED): The redirect request failed.');
-        -2146697206: Log('Error -2146697206 (INET_E_REDIRECT_TO_DIR): The redirection failed because the target URL is a directory.');
-        -2146697212: Log('Error -2146697212 (INET_E_QUERYOPTION_UNKNOWN): The requested option is unknown.');
-        -2146697215: Log('Error -2146697215 (INET_E_AUTHENTICATION_REQUIRED): Authentication is required to access the resource.');
-        else
-        begin
-          Log('Error ' + IntToStr(DownloadResult) + ': Unknown error.');
-          DownloadLogs.Add('Failed to download ' + URL + ' with an unknown error code: ' + IntToStr(DownloadResult));
-          MsgBox('Failed to download ' + URL + ' with an unknown error code: ' + IntToStr(DownloadResult) + '. Please check the logs for more details.', mbError, MB_OK);
-        end;
-      end;
-      DownloadLogs.Add('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult));
-      MsgBox('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult) + '. Please check the logs for more details.', mbError, MB_OK);
-      Exit;
+      IndividualProgressBar.Position := IndividualProgressBar.Position + 1;
+      WizardForm.Update;
     end;
   end;
+
+  // Update the overall progress bar
   DownloadPage.SetProgress(DownloadList.Count, DownloadList.Count);
+  IndividualProgressBar.Position := IndividualProgressBar.Max;
+  WizardForm.Update;
 end;
 
 procedure MoveGameDataToKSPDir;
@@ -2859,14 +3149,13 @@ begin
   Log('Moving GameData from ' + SourceDir + ' to ' + DestDir);
   
   // Perform the copy and log any errors
-	try
-	  MoveDirectory(SourceDir, DestDir);
-	  Log('Successfully moved GameData to ' + DestDir);
-	except
-	  Log('Failed to move GameData to ' + DestDir);
+  try
+    MoveDirectory(SourceDir, DestDir);
+    Log('Successfully moved GameData to ' + DestDir);
+  except
+    Log('Failed to move GameData to ' + DestDir);
     MsgBox('Failed to move GameData to ' + DestDir + '. Please check the logs for details.', mbError, MB_OK);
-	Abort;
-	end;
+  end;
 end;
 
 //To be added
@@ -2989,9 +3278,43 @@ end;
 
 procedure DeinitializeSetup;
 // Cleans up resources and temporary files after installation.
+var
+  LogFilePathName, LogFileName, NewFilePathName, NewFilePathNameLogs, NewFilePathNameRSS: string;
 begin
   Log('Deinitializing setup and cleaning up resources');  
 	ClearDownloadDirectory;
+
+  // Get the full path of the log file
+  LogFilePathName := ExpandConstant('{log}');
+  LogFileName := ExtractFileName(LogFilePathName);
+  
+  // Set the new target path
+  NewFilePathName := ExpandConstant(KSP_DIR + '\Logs\RSSRebornInstaller\') + LogFileName;
+  Log('Destination file path ' + NewFilePathName);
+  NewFilePathNameLogs := ExpandConstant(KSP_DIR + '\Logs');
+  Log('KSP Log file path ' + NewFilePathNameLogs);
+  NewFilePathNameRSS := ExpandConstant(KSP_DIR + '\Logs\RSSRebornInstaller');
+  Log('RSS Log file path ' + NewFilePathNameRSS);
+
+  // Ensure the directory exists
+  if not DirExists(NewFilePathNameLogs) then
+    CreateDir(NewFilePathNameLogs);
+
+  if not DirExists(ExpandConstant(NewFilePathNameRSS)) then
+    CreateDir(ExpandConstant(NewFilePathNameRSS));
+  
+  // Copy the log file to the new location
+  if FileExists(LogFilePathName) then
+  begin
+    FileCopy(LogFilePathName, NewFilePathName, False);
+    Log('Log Copied to ' + NewFilePathName);
+  end
+  else
+  begin
+    MsgBox('Log file not found.', mbError, MB_OK)
+  end;
+
+  Log('Installer has completed.');  
 end;
 
 procedure CheckAndAddFolder(const FolderName: string; ModList, MissingMods: TStringList; GameDataPath: string);
@@ -3052,6 +3375,11 @@ begin
       CheckAndAddFolder('RSSVE', ModList, MissingMods, GameDataPath);
     end;
 
+    if AddTUFXCheckbox.Checked then
+    begin
+      CheckAndAddFolder('TUFX', ModList, MissingMods, GameDataPath);
+    end;
+
     // Log the complete mod list
     Log('Installed mods in GameData folder:');
     for i := 0 to ModList.Count - 1 do
@@ -3068,57 +3396,6 @@ begin
   finally
     ModList.Free;
     MissingMods.Free;
-  end;
-end;
-
-procedure CopySetupLog;
-var
-  LogFileName, SourceLogPath, DestLogPath: string;
-  KSPLogDir, KSPLogs: string;
-begin
-  // Define the KSP log directory
-  KSPLogs := KSP_DIR + '\Logs';
-  KSPLogDir := KSP_DIR + '\Logs\RSSRebornInstallerLogs';
-
-  // Create the directory if it doesn't exist
-    if not DirExists(KSPLogs) then
-  begin
-    if not CreateDir(KSPLogs) then
-    begin
-      Log('Failed to create log directory: ' + KSPLogs);
-      Exit;
-    end;
-  end;
-  if not DirExists(KSPLogDir) then
-  begin
-    if not CreateDir(KSPLogDir) then
-    begin
-      Log('Failed to create log directory: ' + KSPLogDir);
-      Exit;
-    end;
-  end;
-
-  // Find the most recent setup log file in the AppData local temp directory
-  LogFileName := FileSearch('Setup Log *.txt', ExpandConstant('{localappdata}\Temp'));
-
-  if LogFileName <> '' then
-  begin
-    SourceLogPath := ExpandConstant('{localappdata}\Temp\' + LogFileName);
-    DestLogPath := KSPLogDir + '\' + LogFileName;
-
-    // Copy the log file to the KSP log directory
-    if not FileCopy(SourceLogPath, DestLogPath, False) then
-    begin
-      Log('Failed to copy log file: ' + SourceLogPath + ' to ' + DestLogPath);
-    end
-    else
-    begin
-      Log('Log file copied successfully: ' + SourceLogPath + ' to ' + DestLogPath);
-    end;
-  end
-  else
-  begin
-    Log('No setup log files found in the Temp directory.');
   end;
 end;
 
@@ -3150,6 +3427,7 @@ begin
 				end;
 			end;
 			StartInstallation;
+      UpdateConfigFile;
 			DownloadAllFiles;
 		finally
 			OnDownloadComplete;
@@ -3188,7 +3466,5 @@ begin
 
       Log('Installation process completed successfully, cleaning up files now');
 			DeinitializeSetup;
-
-      CopySetupLog;
   end;
 end;
