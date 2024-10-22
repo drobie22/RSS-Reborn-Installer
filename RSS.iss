@@ -40,7 +40,7 @@ WizardStyle=modern
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-#include ReadReg(HKEY_LOCAL_MACHINE,'Software\Sherlock Software\InnoTools\Downloader','ScriptPath','');
+#include ReadReg(HKLM, 'Software\WOW6432Node\Mitrich Software\Inno Download Plugin', 'InstallDir') + '\idp.iss'
 
 [Messages]
 WelcomeLabel2=This will install RSS Reborn into your KSP directory.%n%nMod created and maintained by Ballisticfox, Techo, and VaNnadin.%n[name/ver] created by DRobie22.
@@ -48,12 +48,11 @@ WelcomeLabel2=This will install RSS Reborn into your KSP directory.%n%nMod creat
 [Files]
 Source: "Licenses\license.txt"; DestDir: "{app}"; Flags: dontcopy;
 Source: "Licenses\lgpl-3.0.txt"; DestDir: "{app}"; Flags: dontcopy;
-Source: "itdownload.dll"; DestDir: "{app}"; Flags: dontcopy;
+Source: "idp.dll"; DestDir: "{tmp}"; Flags: dontcopy;
 
 [Code]
 const
   GitHubAPI = 'https://api.github.com/repos/';
-  ITD_DLL = 'itdownload.dll';
   MAX_PATH = 260;
   MOVEFILE_COPY_ALLOWED = $2;
   MOVEFILE_REPLACE_EXISTING = $1; 
@@ -65,6 +64,9 @@ const
   SECONDS_IN_AN_HOUR = 3600;
   SECONDS_IN_A_MINUTE = 60;
   URLMON_DLL = 'urlmon.dll';
+  IDP_DOWNLOADING = 1;
+  IDP_DOWNLOADCOMPLETE = 2;
+  IDP_DOWNLOADERROR = 3;
 	
 var
   AAinKSPCheckbox: TCheckBox;
@@ -134,6 +136,8 @@ type
   TResolutionPages = array of TWizardPage;
   TResolutionCombos = array of TComboBox;
   TProgressCallback = procedure(Position, TotalSize: Integer);
+  TDownloadCallback = function(Progress: Integer; ProgressMax: Integer; Status: Integer; Param: Integer): Integer;
+  TDownloadProgressCallback = function(Progress: Integer; ProgressMax: Integer; Status: Integer; Param: Integer): Integer;
 
 procedure InitializeConstants;
 begin
@@ -1584,7 +1588,6 @@ begin
   InitializeVariables;
 	InitializeArrayLengths;
   InitializeBodyRepos;
-  ITD_Init;
 
   // Read GitHub access token from the registry if it exists
   MyAccessToken := ReadGitHubAccessToken;
@@ -3079,85 +3082,58 @@ begin
   end;
 end;
 
-function URLDownloadToFile(Caller: Integer; URL: PAnsiChar; FileName: PAnsiChar; Reserved: Integer; StatusCB: Integer): Integer;
-  external 'URLDownloadToFileA@urlmon.dll stdcall';
-
 procedure DownloadAllFiles;
-// The full procedure that executes the download list
 var
   URL, Dest, FileName, DownloadItem: String;
   I: Integer;
-  DownloadResult: HRESULT;
+  ResultIDP: Boolean;
+  ErrorCode: Integer;
 begin
   Log('========================================================');
   DownloadPage.SetProgress(0, DownloadList.Count);
-
-  // List Downloads
+  IndividualProgressBar.Position := 0;
   for I := 0 to DownloadList.Count - 1 do
   begin
     Log(DownloadList[I]);
   end;
-
   if DownloadList.Count = 0 then
   begin
-  Log('No downloads found!');
-  MsgBox('Failed to queue URLs for download. Please submit an issue on GitHub with your log.', mbError, MB_OK);
-  abort
+    Log('No downloads found!');
+    MsgBox('Failed to queue URLs for download. Please submit an issue on GitHub with your log.', mbError, MB_OK);
+    abort;
   end;
+
+  idpSetOption('DetailedMode',   '1');
 
   for I := 0 to DownloadList.Count - 1 do
   begin
     DownloadPage.SetProgress(I, DownloadList.Count);
-    
-    // Extract URL and TempFile from DownloadList
     DownloadItem := DownloadList[I];
     URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
     FileName := CustomExtractFileName(URL);
-
-    // Ensure the correct destination path
     Dest := DownloadsDir + '\' + FileName;
-    
     CurrentFileLabel.Caption := 'Downloading: ' + FileName;
     WizardForm.Update;
+    Log('Starting download for URL: ' + URL);
+    Log('URL downloading to: ' + expandconstant(Dest));
 
-    Log('Calling URLDownloadToFile with URL: ' + URL + ' and Dest: ' + Dest);
-    
-    DownloadResult := URLDownloadToFile(0, PAnsiChar(URL), PAnsiChar(Dest), 0, 0);
-    GitHubCount.Add('Github Call');
-
-    if DownloadResult = S_OK then
+    ResultIDP := idpDownloadFile(URL, expandconstant(Dest));
+    if not ResultIDP then
     begin
-      Log('Successfully downloaded ' + URL + ' to ' + Dest);
-      DownloadLogs.Add('Successfully downloaded ' + URL + ' to ' + Dest);
+      Log('Failed to download ' + URL);
+      MsgBox('Failed to download ' + URL, mbError, MB_OK);
     end
     else
     begin
-      case DownloadResult of
-        -2146697208: Log('Error -2146697208 (INET_E_DOWNLOAD_FAILURE): The download was blocked due to security reasons.');
-        -2146697211: Log('Error -2146697211 (INET_E_RESOURCE_NOT_FOUND): The server could not be found or there was a network connectivity issue.');
-        -2146697207: Log('Error -2146697207 (INET_E_DATA_NOT_AVAILABLE): No data is available for the requested resource.');
-        -2146697210: Log('Error -2146697210 (INET_E_INVALID_REQUEST): The server returned an invalid or unrecognized response.');
-        -2146697201: Log('Error -2146697201 (INET_E_DOWNLOAD_BLOCKED): The request was invalid due to a problem with the URL.');
-        -2146697209: Log('Error -2146697209 (INET_E_OBJECT_NOT_FOUND): The server or proxy returned an invalid or unrecognized response.');
-        -2146697213: Log('Error -2146697213 (INET_E_SECURITY_PROBLEM): A security problem occurred. Make sure SSL and TLS settings are correct.');
-        -2146697214: Log('Error -2146697214 (INET_E_CANNOT_CONNECT): The request was forbidden by the server.');
-        -2146697205: Log('Error -2146697205 (INET_E_REDIRECT_FAILED): The redirect request failed.');
-        -2146697206: Log('Error -2146697206 (INET_E_REDIRECT_TO_DIR): The redirection failed because the target URL is a directory.');
-        -2146697212: Log('Error -2146697212 (INET_E_QUERYOPTION_UNKNOWN): The requested option is unknown.');
-        -2146697215: Log('Error -2146697215 (INET_E_AUTHENTICATION_REQUIRED): Authentication is required to access the resource.');
-        else
-        begin
-          Log('Error ' + IntToStr(DownloadResult) + ': Unknown error.');
-          DownloadLogs.Add('Failed to download ' + URL + ' with an unknown error code: ' + IntToStr(DownloadResult));
-          MsgBox('Failed to download ' + URL + ' with an unknown error code: ' + IntToStr(DownloadResult) + '. Please check the logs for more details.', mbError, MB_OK);
-        end;
-      end;
-      DownloadLogs.Add('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult));
-      MsgBox('Failed to download ' + URL + ' with error code: ' + IntToStr(DownloadResult) + '. Please check the logs for more details.', mbError, MB_OK);
-      Exit;
+      IndividualProgressBar.Position := IndividualProgressBar.Position + 1;
+      WizardForm.Update;
     end;
   end;
+
+  // Update the overall progress bar
   DownloadPage.SetProgress(DownloadList.Count, DownloadList.Count);
+  IndividualProgressBar.Position := IndividualProgressBar.Max;
+  WizardForm.Update;
 end;
 
 procedure MoveGameDataToKSPDir;
@@ -3173,14 +3149,13 @@ begin
   Log('Moving GameData from ' + SourceDir + ' to ' + DestDir);
   
   // Perform the copy and log any errors
-	try
-	  MoveDirectory(SourceDir, DestDir);
-	  Log('Successfully moved GameData to ' + DestDir);
-	except
-	  Log('Failed to move GameData to ' + DestDir);
+  try
+    MoveDirectory(SourceDir, DestDir);
+    Log('Successfully moved GameData to ' + DestDir);
+  except
+    Log('Failed to move GameData to ' + DestDir);
     MsgBox('Failed to move GameData to ' + DestDir + '. Please check the logs for details.', mbError, MB_OK);
-	Abort;
-	end;
+  end;
 end;
 
 //To be added

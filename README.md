@@ -106,6 +106,7 @@ Follow these steps to set up an environment access token to increase GitHub API 
 ### Step 2: Click on your Profile
 1. Click on your profile icon in the upper-right corner.
 2. Select "Developer Settings" from the menu.
+(You may also have to go to normal settings first, then go to Developer Settings)
 
 ### Step 3: Personal Access Tokens
 1. In Developer settings, click on "Personal Access Tokens".
