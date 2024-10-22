@@ -1818,7 +1818,7 @@ begin
     ScaledCheckboxes[I].Parent := Page.Surface;
     ScaledCheckboxes[I].Left := ScaleX(220);
     ScaledCheckboxes[I].Top := ScaleY(PageHeight);
-    ScaledCheckboxes[I].Caption := 'Include Scaled';
+    ScaledCheckboxes[I].Caption := 'Add HQ Mesh';
     ScaledCheckboxes[I].Visible := False;
 
     SizesList[I] := TStringList.Create;
