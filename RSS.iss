@@ -83,12 +83,11 @@ var
   BodySizes: array of string;
   BodyVersions: array of string;
   CommunitySettings: TCheckBox;
-  CurrentFileLabel: TNewStaticText;
   CurrentFileLabelE: TNewStaticText;
   CurrentFileLabelM: TNewStaticText;
   DownloadList: TStringList;
   DownloadLogs: TStringList;
-  DownloadPage: TOutputProgressWizardPage;
+  //DownloadPage: TOutputProgressWizardPage;
   DownloadsDir: string;
   EVEdownloaded: Boolean;
   ExtractPage: TOutputProgressWizardPage;
@@ -98,7 +97,6 @@ var
   FileLabel: TLabel;
   GitHubCount: TStringList;
   HQCloudsCheckbox: TCheckBox;
-  IndividualProgressBar: TNewProgressBar;
   KSPDirPage: TInputDirWizardPage;
   KSP_DIR: string;
   LatestReleaseAssetsJSON: string;
@@ -1738,24 +1736,6 @@ begin
   HQCloudsCheckbox.Caption := 'Remove HQ Volumetric Clouds Config (if present)';
   HQCloudsCheckbox.Enabled := False; 
   HQCloudsCheckbox.Visible := RaymarchedVolumetricsCheckbox.Checked;
-
-	// Download Progress Bar Page
-  DownloadPage := CreateOutputProgressPage('Downloading Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
-  CurrentFileLabel := TNewStaticText.Create(DownloadPage);
-  CurrentFileLabel.Parent := DownloadPage.Surface;
-  CurrentFileLabel.Left := ScaleX(8);
-  CurrentFileLabel.Top := ScaleY(90);
-  CurrentFileLabel.Width := DownloadPage.SurfaceWidth - ScaleX(16);
-  CurrentFileLabel.Caption := 'Initializing download...';
-
-  IndividualProgressBar := TNewProgressBar.Create(DownloadPage);
-  IndividualProgressBar.Parent := DownloadPage.Surface;
-  IndividualProgressBar.Left := ScaleX(0);
-  IndividualProgressBar.Top := ScaleY(70);
-  IndividualProgressBar.Width := WizardForm.ClientWidth;
-  IndividualProgressBar.Height := ScaleY(16);
-  IndividualProgressBar.Position := 0;
-  IndividualProgressBar.Max := 100;
 	
 	// Extraction Progress Bar Page 
 	ExtractPage := CreateOutputProgressPage('Extracting Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
@@ -1947,7 +1927,7 @@ begin
   begin
     // Handle the case where the file does not exist
     Log('The settings.cfg file was not found at: ' + ConfigFilePath);
-    MsgBox('The settings.cfg file was not found.', mbError, MB_OK);
+    MsgBox('The default KSP settings.cfg file was not found! Your game may not run.', mbError, MB_OK);
   end;
 
   // Delete HQ_volumetricClouds.cfg if the HQCloudsCheckbox is checked
@@ -3086,12 +3066,10 @@ procedure DownloadAllFiles;
 var
   URL, Dest, FileName, DownloadItem: String;
   I: Integer;
-  ResultIDP: Boolean;
-  ErrorCode: Integer;
 begin
   Log('========================================================');
-  DownloadPage.SetProgress(0, DownloadList.Count);
-  IndividualProgressBar.Position := 0;
+  //DownloadPage.SetProgress(0, DownloadList.Count);
+  //IndividualProgressBar.Position := 0;
   for I := 0 to DownloadList.Count - 1 do
   begin
     Log(DownloadList[I]);
@@ -3107,32 +3085,17 @@ begin
 
   for I := 0 to DownloadList.Count - 1 do
   begin
-    DownloadPage.SetProgress(I, DownloadList.Count);
     DownloadItem := DownloadList[I];
     URL := Copy(DownloadItem, 1, Pos('=', DownloadItem) - 1);
     FileName := CustomExtractFileName(URL);
     Dest := DownloadsDir + '\' + FileName;
-    CurrentFileLabel.Caption := 'Downloading: ' + FileName;
     WizardForm.Update;
-    Log('Starting download for URL: ' + URL);
-    Log('URL downloading to: ' + expandconstant(Dest));
-
-    ResultIDP := idpDownloadFile(URL, expandconstant(Dest));
-    if not ResultIDP then
-    begin
-      Log('Failed to download ' + URL);
-      MsgBox('Failed to download ' + URL, mbError, MB_OK);
-    end
-    else
-    begin
-      IndividualProgressBar.Position := IndividualProgressBar.Position + 1;
-      WizardForm.Update;
-    end;
+    Log('Queueing download for URL: ' + URL);
+    Log('URL queued to: ' + expandconstant(Dest));
+    idpAddFile(URL, ExpandConstant(Dest));
   end;
 
-  // Update the overall progress bar
-  DownloadPage.SetProgress(DownloadList.Count, DownloadList.Count);
-  IndividualProgressBar.Position := IndividualProgressBar.Max;
+  idpDownloadAfter(wpPreparing);
   WizardForm.Update;
 end;
 
@@ -3399,21 +3362,19 @@ begin
   end;
 end;
 
-procedure CurStepChanged(CurStep: TSetupStep);
-// Actual process steps for installation
+procedure CurPageChanged(CurPageID: Integer);
 begin
-  if CurStep = ssInstall then
+  if CurPageID = wpPreparing then
   begin
-	  Log('========================================================');
+    Log('wpPrep page reached. Running custom code before ssInstall.');
+    Log('========================================================');
     Log('Install step reached. Starting installation process.');
-    DownloadPage.Show;
-		
+
 		// Set KSP directory based on user input, and immediately back it up in case of failure
 		SetKSPDir;
 		//BackupGameDataFolder;
 		
     try
-      // Call modular functions to perform tasks
 			begin
 				if not InitializeDownloads then
 				begin
@@ -3427,15 +3388,22 @@ begin
 				end;
 			end;
 			StartInstallation;
-      UpdateConfigFile;
 			DownloadAllFiles;
+      UpdateConfigFile;
 		finally
 			OnDownloadComplete;
-		  DownloadPage.Hide;
 			ExtractPage.Show;
 		end
+  end;
+end;
 
+procedure CurStepChanged(CurStep: TSetupStep);
+// Actual process steps for installation
+begin
+  if CurStep = ssPostInstall then
+  begin
 		try
+      ExtractPage.Show;
       if not ExtractFiles then
       begin
         Log('Extract files step failed.');
