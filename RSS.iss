@@ -43,7 +43,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 #include ReadReg(HKLM, 'Software\WOW6432Node\Mitrich Software\Inno Download Plugin', 'InstallDir') + '\idp.iss'
 
 [Messages]
-WelcomeLabel2=This will install RSS Reborn into your KSP directory.%n%nMod created and maintained by Ballisticfox, Techo, and VaNnadin.%n[name/ver] created by DRobie22.
+WelcomeLabel2=This will install RSS Reborn into your KSP directory. %n  - Running this installer again will update selected textures.%n%nMod created and maintained by Ballisticfox, Techo, and VaNnadin.%n[name/ver] created by DRobie22.
 
 [Files]
 Source: "Licenses\license.txt"; DestDir: "{app}"; Flags: dontcopy;
@@ -97,6 +97,8 @@ var
   FileLabel: TLabel;
   GitHubCount: TStringList;
   HQCloudsCheckbox: TCheckBox;
+  RaymarchPerformanceBoostCheckbox: TCheckBox;
+  ParallaxTerrainCheckbox: TCheckBox;
   KSPDirPage: TInputDirWizardPage;
   KSP_DIR: string;
   LatestReleaseAssetsJSON: string;
@@ -221,8 +223,8 @@ procedure LogRobocopyCommand(const Command, ReverseCommand: string);
 begin
   RobocopyCommands.Add(Command);
   ReverseRobocopyCommands.Add(ReverseCommand);
-  Log(' [ROBOCOPY] Executed robocopy command: ' + Command);
-  Log('Reverse robocopy command: ' + ReverseCommand);
+  //Log(' [ROBOCOPY] Executed robocopy command: ' + Command);
+  //Log('Reverse robocopy command: ' + ReverseCommand);
 end;
 
 function GetDiskFreeSpaceEx(
@@ -1523,7 +1525,9 @@ begin
   FileBrowseButton.Visible := RaymarchedVolumetricsCheckbox.Checked;
   FileLabel.Visible := RaymarchedVolumetricsCheckbox.Checked;
   HQCloudsCheckbox.Visible := RaymarchedVolumetricsCheckbox.Checked;
+  RaymarchPerformanceBoostCheckbox.Visible := RaymarchedVolumetricsCheckbox.Checked;
   HQCloudsCheckbox.Checked := False;
+  RaymarchPerformanceBoostCheckbox.Checked := False;
 end;
 
 procedure BrowseForFile(Sender: TObject);
@@ -1547,6 +1551,8 @@ begin
   ReflectionTextureCheckbox.Enabled := CommunitySettings.Checked;
   AAinKSPCheckbox.Enabled := CommunitySettings.Checked;
   HQCloudsCheckbox.Enabled := CommunitySettings.Checked;
+  RaymarchPerformanceBoostCheckbox.Enabled := CommunitySettings.Checked;
+  ParallaxTerrainCheckbox.Enabled := CommunitySettings.Checked;
 
   if not CommunitySettings.Checked then
   begin
@@ -1555,6 +1561,8 @@ begin
     ReflectionTextureCheckbox.Checked := False; 
     AAinKSPCheckbox.Checked := False; 
     HQCloudsCheckbox.Checked := False; 
+    RaymarchPerformanceBoostCheckbox.Checked := False;
+    ParallaxTerrainCheckbox.Checked := False;
     Log('Community Settings turned off - all related checkboxes unchecked');
   end
   else
@@ -1666,7 +1674,7 @@ begin
   LineSeparator.Parent := KSPDirPage.Surface;
   LineSeparator.Shape := bsTopLine;
   LineSeparator.Left := KSPDirPage.Edits[0].Left;
-  LineSeparator.Top := FileBrowseButton.Top + FileBrowseButton.Height + 10;
+  LineSeparator.Top := FileBrowseButton.Top + FileBrowseButton.Height + 5;
   LineSeparator.Width := WizardForm.ClientWidth - KSPDirPage.Edits[0].Left * 2;
   LineSeparator.Height := 2;
 
@@ -1674,7 +1682,7 @@ begin
   CommunitySettings := TCheckBox.Create(WizardForm);
   CommunitySettings.Parent := KSPDirPage.Surface;
   CommunitySettings.Left := KSPDirPage.Edits[0].Left;
-  CommunitySettings.Top := LineSeparator.Top + LineSeparator.Height + 10;
+  CommunitySettings.Top := LineSeparator.Top + LineSeparator.Height + 5;
   CommunitySettings.Width := WizardForm.ClientWidth - KSPDirPage.Edits[0].Left * 2;
   CommunitySettings.Caption := 'Enable Recommended Community Visual Settings';
   CommunitySettings.Checked := False; 
@@ -1683,7 +1691,7 @@ begin
   AddTUFXCheckbox := TCheckBox.Create(WizardForm);
   AddTUFXCheckbox.Parent := KSPDirPage.Surface;
   AddTUFXCheckbox.Left := CommunitySettings.Left + 25;
-  AddTUFXCheckbox.Top := CommunitySettings.Top + CommunitySettings.Height + 10;
+  AddTUFXCheckbox.Top := CommunitySettings.Top + CommunitySettings.Height + 5;
   AddTUFXCheckbox.Width := CommunitySettings.Width;
   AddTUFXCheckbox.Caption := 'Add TUFX to installation';
   AddTUFXCheckbox.Enabled := False; 
@@ -1691,7 +1699,7 @@ begin
   Note1 := TLabel.Create(WizardForm);
   Note1.Parent := KSPDirPage.Surface;
   Note1.Left := AddTUFXCheckbox.Left + 20;
-  Note1.Top := AddTUFXCheckbox.Top + AddTUFXCheckbox.Height + 5;
+  Note1.Top := AddTUFXCheckbox.Top + AddTUFXCheckbox.Height + 3;
   Note1.Caption := '    - Needed for Blackrack''s profile and (easy) anti aliasing.';
   Note1.AutoSize := True;
   Note1.Enabled := False;
@@ -1699,7 +1707,7 @@ begin
   Note2 := TLabel.Create(WizardForm);
   Note2.Parent := KSPDirPage.Surface;
   Note2.Left := AddTUFXCheckbox.Left + 20;
-  Note2.Top := Note1.Top + Note1.Height + 5;
+  Note2.Top := Note1.Top + Note1.Height + 3;
   Note2.Caption := '    - SMAA enabled.';
   Note2.AutoSize := True;
   Note2.Enabled := False;
@@ -1707,7 +1715,7 @@ begin
   ReflectionQualityCheckbox := TCheckBox.Create(WizardForm);
   ReflectionQualityCheckbox.Parent := KSPDirPage.Surface;
   ReflectionQualityCheckbox.Left := AddTUFXCheckbox.Left;
-  ReflectionQualityCheckbox.Top := Note2.Top + Note2.Height + 10;
+  ReflectionQualityCheckbox.Top := Note2.Top + Note2.Height + 5;
   ReflectionQualityCheckbox.Width := AddTUFXCheckbox.Width;
   ReflectionQualityCheckbox.Caption := 'Reflection Quality -> Low';
   ReflectionQualityCheckbox.Enabled := False;
@@ -1715,7 +1723,7 @@ begin
   ReflectionTextureCheckbox := TCheckBox.Create(WizardForm);
   ReflectionTextureCheckbox.Parent := KSPDirPage.Surface;
   ReflectionTextureCheckbox.Left := ReflectionQualityCheckbox.Left;
-  ReflectionTextureCheckbox.Top := ReflectionQualityCheckbox.Top + ReflectionQualityCheckbox.Height + 10;
+  ReflectionTextureCheckbox.Top := ReflectionQualityCheckbox.Top + ReflectionQualityCheckbox.Height + 5;
   ReflectionTextureCheckbox.Width := ReflectionQualityCheckbox.Width;
   ReflectionTextureCheckbox.Caption := 'Reflection Texture -> 128';
   ReflectionTextureCheckbox.Enabled := False;
@@ -1723,20 +1731,37 @@ begin
   AAinKSPCheckbox := TCheckBox.Create(WizardForm);
   AAinKSPCheckbox.Parent := KSPDirPage.Surface;
   AAinKSPCheckbox.Left := ReflectionTextureCheckbox.Left;
-  AAinKSPCheckbox.Top := ReflectionTextureCheckbox.Top + ReflectionTextureCheckbox.Height + 10;
+  AAinKSPCheckbox.Top := ReflectionTextureCheckbox.Top + ReflectionTextureCheckbox.Height + 5;
   AAinKSPCheckbox.Width := ReflectionTextureCheckbox.Width;
   AAinKSPCheckbox.Caption := 'AA in KSP -> off';
   AAinKSPCheckbox.Enabled := False; 
 
+  ParallaxTerrainCheckbox := TCheckBox.Create(WizardForm);
+  ParallaxTerrainCheckbox.Parent := KSPDirPage.Surface;
+  ParallaxTerrainCheckbox.Left := AAinKSPCheckbox.Left;
+  ParallaxTerrainCheckbox.Top := AAinKSPCheckbox.Top + AAinKSPCheckbox.Height + 5;
+  ParallaxTerrainCheckbox.Width := AAinKSPCheckbox.Width;
+  ParallaxTerrainCheckbox.Caption := 'Remove Parallax Texture Warning During Game Launch';
+  ParallaxTerrainCheckbox.Enabled := False; 
+
   HQCloudsCheckbox := TCheckBox.Create(WizardForm);
   HQCloudsCheckbox.Parent := KSPDirPage.Surface;
-  HQCloudsCheckbox.Left := AAinKSPCheckbox.Left;
-  HQCloudsCheckbox.Top := AAinKSPCheckbox.Top + AAinKSPCheckbox.Height + 10;
-  HQCloudsCheckbox.Width := AAinKSPCheckbox.Width;
+  HQCloudsCheckbox.Left := ParallaxTerrainCheckbox.Left;
+  HQCloudsCheckbox.Top := ParallaxTerrainCheckbox.Top + ParallaxTerrainCheckbox.Height + 5;
+  HQCloudsCheckbox.Width := ParallaxTerrainCheckbox.Width;
   HQCloudsCheckbox.Caption := 'Remove HQ Volumetric Clouds Config (if present)';
   HQCloudsCheckbox.Enabled := False; 
   HQCloudsCheckbox.Visible := RaymarchedVolumetricsCheckbox.Checked;
-	
+
+  RaymarchPerformanceBoostCheckbox := TCheckBox.Create(WizardForm);
+  RaymarchPerformanceBoostCheckbox.Parent := KSPDirPage.Surface;
+  RaymarchPerformanceBoostCheckbox.Left := HQCloudsCheckbox.Left;
+  RaymarchPerformanceBoostCheckbox.Top := HQCloudsCheckbox.Top + HQCloudsCheckbox.Height + 5;
+  RaymarchPerformanceBoostCheckbox.Width := HQCloudsCheckbox.Width;
+  RaymarchPerformanceBoostCheckbox.Caption := 'Adjust Volumetric Clouds for Performance Boost (minimal visual impact)';
+  RaymarchPerformanceBoostCheckbox.Enabled := False; 
+  RaymarchPerformanceBoostCheckbox.Visible := RaymarchedVolumetricsCheckbox.Checked;
+
 	// Extraction Progress Bar Page 
 	ExtractPage := CreateOutputProgressPage('Extracting Files', 'This may take a while, but I''m sure you''re used to long KSP loading times by now.');
   CurrentFileLabelE := TNewStaticText.Create(ExtractPage);
@@ -1869,16 +1894,19 @@ begin
   end;
 end;
 
-procedure UpdateConfigFile;
+procedure UpdateCommunitySettings;
 var
-  ConfigFilePath: string;
+  ConfigFilePath, RaymarchedTimeSlicing, RaymarchedEarthClouds, ParallaxTerrain: string;
   Lines: TStringList;
   i: Integer;
   HQCloudsFilePath: string;
 begin
-  // Define the path to the settings.cfg file in the KSP directory
+  // Define the path to the files in the KSP directory
   ConfigFilePath := KSP_DIR + '\settings.cfg';
   HQCloudsFilePath := KSP_DIR + '\GameData\HQ_volumetricClouds.cfg';
+  RaymarchedTimeSlicing := KSP_DIR + '\GameData\RSSVE-Configs\EVE\RaymarchedClouds.cfg';
+  RaymarchedEarthClouds := KSP_DIR + '\GameData\RSSVE-Configs\EVE\03_Earth\Earth_Clouds.cfg';
+  ParallaxTerrain := KSP_DIR + '\GameData\Parallax_StockTextures\ParallaxTerrain.cfg';
 
   // Log the attempt to update the settings.cfg file
   Log('Attempting to update settings.cfg at: ' + ConfigFilePath);
@@ -1948,6 +1976,54 @@ begin
     begin
       Log('HQ_volumetricClouds.cfg was not found at: ' + HQCloudsFilePath);
     end;
+  end;
+
+  // Create ParallaxTerrain.cfg if the ParallaxTerrainCheckbox is checked
+  if ParallaxTerrainCheckbox.Checked then
+  begin
+    if SaveStringToFile(ParallaxTerrain, #13#10, False) then
+    begin
+      Log('ParallaxTerrain.cfg created successfully.');
+    end
+    else
+    begin
+      Log('Failed to create ParallaxTerrain.cfg.');
+    end;
+  end;
+
+  // Check if the Raymarched Config file exists
+  if FileExists(RaymarchedTimeSlicing) then
+  begin
+    // Create a TStringList to load and modify the file
+    Lines := TStringList.Create;
+    try
+      // Load the file into the TStringList
+      Lines.LoadFromFile(RaymarchedTimeSlicing);
+      Log('Loaded RaymarchedClouds.cfg successfully.');
+
+      // Iterate through each line to find the target settings and update them
+      for i := 0 to Lines.Count - 1 do
+      begin
+        if RaymarchPerformanceBoostCheckbox.Checked and (Pos('			directLightTimeSlicing = 128', Lines[i]) = 1) then
+        begin
+          Lines[i] := '			directLightTimeSlicing = 64';
+          Log('Updated directLightTimeSlicing to 64');
+        end;
+      end;
+
+      // Save the updated lines back to the file
+      Lines.SaveToFile(RaymarchedTimeSlicing);
+      Log('Saved changes to RaymarchedClouds.cfg successfully.');
+    finally
+      Lines.Free;  // Free the TStringList after use
+      Log('Freed memory allocated for TStringList.');
+    end;
+  end
+  else
+  begin
+    // Handle the case where the file does not exist
+    Log('The RaymarchedClouds.cfg file was not found at: ' + RaymarchedTimeSlicing);
+    MsgBox('The RaymarchedClouds.cfg file was not found! Your game may not run.', mbError, MB_OK);
   end;
 end;
 
@@ -3389,7 +3465,6 @@ begin
 			end;
 			StartInstallation;
 			DownloadAllFiles;
-      UpdateConfigFile;
 		finally
 			OnDownloadComplete;
 			ExtractPage.Show;
@@ -3425,6 +3500,7 @@ begin
       end;
 		finally;
 		  MoveGameDataToKSPDir;
+      UpdateCommunitySettings;
 			MergePage.hide;
       LogReverseCommandsAtEnd;
 		end;
