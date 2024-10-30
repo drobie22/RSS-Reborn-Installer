@@ -11,7 +11,7 @@
 ; ...but it works
 
 #define MyAppName "RSS Reborn Installer"
-#define MyAppVersion "1.2.1"
+#define MyAppVersion "1.2.2"
 #define MyAppPublisher "DRobie22"
 #define MyAppURL "drobie22/RSS-Reborn-Installer"
 #define MyAppExeName "RSS-Reborn-Installer.exe"
@@ -1991,39 +1991,42 @@ begin
     end;
   end;
 
-  // Check if the Raymarched Config file exists
-  if FileExists(RaymarchedTimeSlicing) and RaymarchPerformanceBoostCheckbox.Checked then
+  // Check if the Raymarched Config file exists if the box is checked
+  if RaymarchPerformanceBoostCheckbox.Checked then
   begin
-    // Create a TStringList to load and modify the file
-    Lines := TStringList.Create;
-    try
-      // Load the file into the TStringList
-      Lines.LoadFromFile(RaymarchedTimeSlicing);
-      Log('Loaded RaymarchedClouds.cfg successfully.');
+    if FileExists(RaymarchedTimeSlicing) then
+    begin
+      // Create a TStringList to load and modify the file
+      Lines := TStringList.Create;
+      try
+        // Load the file into the TStringList
+        Lines.LoadFromFile(RaymarchedTimeSlicing);
+        Log('Loaded RaymarchedClouds.cfg successfully.');
 
-      // Iterate through each line to find the target settings and update them
-      for i := 0 to Lines.Count - 1 do
-      begin
-        if RaymarchPerformanceBoostCheckbox.Checked and (Pos('			directLightTimeSlicing = 128', Lines[i]) = 1) then
+        // Iterate through each line to find the target settings and update them
+        for i := 0 to Lines.Count - 1 do
         begin
-          Lines[i] := '			directLightTimeSlicing = 64';
-          Log('Updated directLightTimeSlicing to 64');
+          if RaymarchPerformanceBoostCheckbox.Checked and (Pos('			directLightTimeSlicing = 128', Lines[i]) = 1) then
+          begin
+            Lines[i] := '			directLightTimeSlicing = 64';
+            Log('Updated directLightTimeSlicing to 64');
+          end;
         end;
-      end;
 
-      // Save the updated lines back to the file
-      Lines.SaveToFile(RaymarchedTimeSlicing);
-      Log('Saved changes to RaymarchedClouds.cfg successfully.');
-    finally
-      Lines.Free;  // Free the TStringList after use
-      Log('Freed memory allocated for TStringList.');
+        // Save the updated lines back to the file
+        Lines.SaveToFile(RaymarchedTimeSlicing);
+        Log('Saved changes to RaymarchedClouds.cfg successfully.');
+      finally
+        Lines.Free;  // Free the TStringList after use
+        Log('Freed memory allocated for TStringList.');
+      end;
+    end
+    else
+    begin
+      // Handle the case where the file does not exist
+      Log('The RaymarchedClouds.cfg file was not found at: ' + RaymarchedTimeSlicing);
+      MsgBox('The RaymarchedClouds.cfg file was not found! Your game may not run.', mbError, MB_OK);
     end;
-  end
-  else
-  begin
-    // Handle the case where the file does not exist
-    Log('The RaymarchedClouds.cfg file was not found at: ' + RaymarchedTimeSlicing);
-    MsgBox('The RaymarchedClouds.cfg file was not found! Your game may not run.', mbError, MB_OK);
   end;
 end;
 
