@@ -18,7 +18,7 @@ Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer!
 	- RSS Reborn is a custom fork of RSS. That means RSS Reborn is compatible with RP-1, Realism Overhaul, etc.
 - [7-Zip](https://www.7-zip.org/download.html) or [WinRAR](https://www.win-rar.com/) (for extracting files)
 - 50 GB free storage space
-- (Optional) [Blackrack's Volumetric Clouds](https://www.patreon.com/blackrack) If you wish to include this, you must have his EVE and Scatterer zips downloaded to your downloads folder so the installer can grab them. 
+- (Optional) [Blackrack's Volumetric Clouds (V4 or older, V5 incompatible with reborn)](https://www.patreon.com/blackrack) If you wish to include this, you must have his EVE and Scatterer zips downloaded to your downloads folder so the installer can grab them. 
     - This is in place to ensure you have obtained the files through Patreon. 
     - RSS Reborn Installer will never circumvent support for mod developers. 
 
