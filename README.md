@@ -1,5 +1,7 @@
 # RSS Reborn Installer
 
+*Since the far superior successor to RSS Reborn has released, the installer for reborn is no longer actively maintained. Please see Sol's discord for more information. Thank you for understanding.*
+
 Welcome to the [RSS Reborn](https://github.com/RSS-Reborn/RSS-Reborn) Installer! This installer is designed to help you easily set up Ballisticfox's RSS Reborn.
 
 ![RSS Reborn Installer](https://github.com/drobie22/RSS-Reborn-Installer/blob/main/Images/V1-1-0wizard.png)
